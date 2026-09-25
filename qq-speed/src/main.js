@@ -17,7 +17,7 @@ import { GameAudio } from './audio.js';
 import { Input } from './input.js';
 import { HUD } from './hud.js';
 import { ItemSystem } from './items.js';
-import { clamp, lerp, damp, dampAngle, wrapAngle, mulberry32, formatTime, smoothstep } from './util.js';
+import { clamp, lerp, damp, dampAngle, wrapAngle, mulberry32, formatTime, smoothstep, distToPolyline } from './util.js';
 import { setMaxAniso } from './textures.js';
 import { Profile, GarageUI, CARS, perfFor, raceReward, BODY_NAMES } from './garage.js';
 
@@ -33,7 +33,7 @@ const QUALITY = [
   { id: 'mid', name: '均衡' },
   { id: 'high', name: '极致' },
 ];
-const LAPS = [1, 2, 3, 5];
+const LAPS = [1, 2, 3, 5, 10, 20]; // 圈数上限 20
 const IS_TOUCH = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 const DT = 1 / 120;
 const END_DELAY = 5; // 第一名冲线后多少秒结束比赛
@@ -75,6 +75,20 @@ function baseFor(id, noise, track, oases) {
       // 主直道南侧是海湾
       return lerp(land, -9, smoothstep(-40, -115, z));
     };
+  if (id === 'forest') {
+    const river = LAYOUTS.forest.river;
+    const [px, pz] = river[0];
+    return (x, z) => {
+      let h = 7 + noise.fbm(x * 0.005, z * 0.005, 4) * 18 + Math.max(0, Math.hypot(x - cx, z - cz) - 650) * 0.2;
+      // 林地起伏压到水面以上：只有溪流和瀑布潭有水
+      if (h < 2.5) h = 2.5 - (2.5 - h) * 0.12;
+      // 瀑布后面的岩山
+      h += 26 * (1 - smoothstep(6, 28, Math.hypot(x + 128, z - 318)));
+      // 溪流河道 + 瀑布潭（河底低于水面）
+      const w = Math.min(distToPolyline(x, z, river) - 9, Math.hypot(x - px, z - pz) - 24);
+      return lerp(-4, h, smoothstep(-2, 22, w));
+    };
+  }
   return (x, z) => 3 + noise.fbm(x * 0.004, z * 0.004, 4) * 26 + Math.max(0, Math.hypot(x - cx, z - cz) - 650) * 0.18;
 }
 
@@ -90,6 +104,9 @@ function tintFor(id, noise) {
     } else if (id === 'egypt') {
       if (h < -1) col.setRGB(0.6, 0.85, 0.45);
       else col.setRGB(1 + n * 0.1, 0.97 + n * 0.08, 0.92);
+    } else if (id === 'forest') {
+      if (h < -0.8) col.setRGB(0.55, 0.5, 0.42);
+      else col.setRGB(0.78 + n * 0.12, 0.92 + n * 0.1, 0.8);
     } else if (id === 'highway') {
       if (h < -0.6) col.setRGB(1.5, 1.25, 0.9);
       else col.setRGB(0.95 + n * 0.12, 0.92 + n * 0.06, 0.72);
@@ -103,6 +120,7 @@ const MOUNTAINS = {
   egypt: { color: 0xd9ae72, r0: 1500, r1: 600, h0: 50, h1: 90, count: 40 },
   snow: { color: 0x6f8fb8, cap: 0xf2f7ff, r0: 1400, r1: 500, h0: 240, h1: 300 },
   highway: { color: 0x6a5a8c, r0: 1500, r1: 500, h0: 80, h1: 170 },
+  forest: { color: 0x2a5a55, r0: 1300, r1: 500, h0: 190, h1: 260 },
 };
 
 class Game {
@@ -423,6 +441,8 @@ class Game {
       this.scene.remove(r.model);
       r.model.traverse((o) => {
         if (o.material && !o.isSprite) o.material.dispose();
+        // 每辆车自己的几何体随车释放（共享的车身 / 车轮几何除外）
+        if (o.geometry && !o.isSprite && !o.geometry.userData.shared) o.geometry.dispose();
       });
     }
     this.racers = [];

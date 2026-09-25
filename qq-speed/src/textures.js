@@ -125,7 +125,7 @@ export function roadTexture(style) {
         g.fillStyle = `rgba(${rnd() > 0.5 ? '255,240,200' : '90,60,30'},${rnd() * 0.12})`;
         g.fillRect(rnd() * W, rnd() * H, 2, 2);
       }
-      // 紫色路边（参考法老金字塔原画）
+      // 紫色路边
       g.fillStyle = '#5b3f9e';
       g.fillRect(0, 0, 18, H);
       g.fillRect(W - 18, 0, 18, H);
@@ -199,6 +199,44 @@ export function roadTexture(style) {
       g.fillStyle = '#ff7a3d';
       g.fillRect(0, 0, 6, H);
       g.fillRect(W - 6, 0, 6, H);
+    } else if (style === 'forest') {
+      // 古老石板林道：青苔填缝的深色石块 + 两侧霓虹青色边线
+      g.fillStyle = '#2f3a33';
+      g.fillRect(0, 0, W, H);
+      const bw = 96, bh = 72;
+      for (let y = -bh; y < H + bh; y += bh) {
+        const off = ((y / bh) & 1) * bw * 0.5;
+        for (let x = -bw; x < W + bw; x += bw) {
+          const l = 70 + rnd() * 26;
+          g.fillStyle = `rgb(${l - 6},${l + 4},${l - 4})`;
+          const j = () => (rnd() - 0.5) * 10;
+          g.beginPath();
+          g.moveTo(x + off + 4 + j(), y + 4 + j());
+          g.lineTo(x + off + bw - 4 + j(), y + 4 + j());
+          g.lineTo(x + off + bw - 4 + j(), y + bh - 4 + j());
+          g.lineTo(x + off + 4 + j(), y + bh - 4 + j());
+          g.closePath();
+          g.fill();
+        }
+      }
+      for (let i = 0; i < 2600; i++) {
+        g.fillStyle = rnd() < 0.6 ? `rgba(70,120,50,${0.2 + rnd() * 0.3})` : `rgba(0,0,0,${rnd() * 0.18})`;
+        g.fillRect(rnd() * W, rnd() * H, 2 + rnd() * 3, 2 + rnd() * 3);
+      }
+      // 行车线磨损的亮带
+      for (const x of [0.3, 0.7]) {
+        const grd = g.createLinearGradient(W * x - 40, 0, W * x + 40, 0);
+        grd.addColorStop(0, 'rgba(255,255,255,0)');
+        grd.addColorStop(0.5, 'rgba(200,220,200,0.08)');
+        grd.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = grd;
+        g.fillRect(W * x - 40, 0, 80, H);
+      }
+      g.fillStyle = '#27f0c8';
+      g.fillRect(10, 0, 7, H);
+      g.fillRect(W - 17, 0, 7, H);
+      g.fillStyle = 'rgba(39,240,200,0.35)';
+      for (let y = 0; y < H; y += 128) g.fillRect(W / 2 - 3, y + 20, 6, 60);
     }
     const t = toTex(c);
     return t;
@@ -247,7 +285,7 @@ export function wallTexture(style) {
       g.font = 'bold 64px Arial Black, Arial';
       g.textAlign = 'center';
       g.textBaseline = 'middle';
-      const txt = ['SPEED', 'SPEEDQQ.COM', 'NITRO', 'SPEEDQQ.COM'];
+      const txt = ['SPEED', 'CYBER DRIFT', 'NITRO', 'CYBER DRIFT'];
       const tc = ['#ffffff', '#1565c0', '#ffffff', '#e53935'];
       for (let i = 0; i < 4; i++) {
         g.fillStyle = tc[i];
@@ -351,8 +389,109 @@ export function wallTexture(style) {
       g.fillText('SPEED', 768, 82);
       g.fillStyle = 'rgba(0,0,0,0.3)';
       g.fillRect(0, H - 12, W, 12);
+    } else if (style === 'forest') {
+      // 横放的原木护栏 + 青苔 + 顶部霓虹灯带
+      for (let y = 0; y < H; y += 42) {
+        const grd = g.createLinearGradient(0, y, 0, y + 42);
+        grd.addColorStop(0, '#7a5534');
+        grd.addColorStop(0.5, '#5c3d24');
+        grd.addColorStop(1, '#3b2616');
+        g.fillStyle = grd;
+        g.fillRect(0, y, W, 42);
+        g.strokeStyle = 'rgba(30,18,8,0.5)';
+        g.lineWidth = 2;
+        for (let x = 0; x < W; x += 14 + rnd() * 30) {
+          g.beginPath();
+          g.moveTo(x, y + 6 + rnd() * 10);
+          g.lineTo(x + 40 + rnd() * 60, y + 8 + rnd() * 26);
+          g.stroke();
+        }
+      }
+      for (let i = 0; i < 900; i++) {
+        g.fillStyle = `rgba(${80 + rnd() * 40},${140 + rnd() * 60},${60 + rnd() * 30},${0.35 + rnd() * 0.4})`;
+        g.beginPath();
+        g.arc(rnd() * W, 60 + rnd() * 70, 2 + rnd() * 6, 0, Math.PI * 2);
+        g.fill();
+      }
+      g.fillStyle = '#27f0c8';
+      g.fillRect(0, 0, W, 7);
+      g.fillStyle = 'rgba(39,240,200,0.35)';
+      g.fillRect(0, 7, W, 5);
     }
     return toTex(c);
+  });
+}
+
+// 树皮：深褐色竖纹 + 青苔
+export function barkTexture() {
+  return cached('bark', () => {
+    const [c, g] = mk(256, 512);
+    const rnd = mulberry32(21);
+    g.fillStyle = '#4a3222';
+    g.fillRect(0, 0, 256, 512);
+    for (let i = 0; i < 90; i++) {
+      const x = rnd() * 256;
+      g.strokeStyle = `rgba(${20 + rnd() * 20},${12 + rnd() * 10},6,${0.5 + rnd() * 0.4})`;
+      g.lineWidth = 2 + rnd() * 5;
+      g.beginPath();
+      g.moveTo(x, 0);
+      for (let y = 0; y <= 512; y += 32) g.lineTo(x + Math.sin(y * 0.03 + i) * 6, y);
+      g.stroke();
+    }
+    for (let i = 0; i < 500; i++) {
+      g.fillStyle = `rgba(${70 + rnd() * 40},${120 + rnd() * 50},${50 + rnd() * 30},${0.25 + rnd() * 0.35})`;
+      g.fillRect(rnd() * 256, rnd() * 512, 3 + rnd() * 8, 3 + rnd() * 12);
+    }
+    return toTex(c);
+  });
+}
+
+// 瀑布：竖向水流条纹（贴图纵向滚动）
+export function waterfallTexture() {
+  return cached('waterfall', () => {
+    const [c, g] = mk(128, 512);
+    const rnd = mulberry32(8);
+    g.fillStyle = 'rgba(170,240,235,0.55)';
+    g.fillRect(0, 0, 128, 512);
+    for (let i = 0; i < 160; i++) {
+      g.fillStyle = `rgba(255,255,255,${0.2 + rnd() * 0.6})`;
+      g.fillRect(rnd() * 128, rnd() * 512, 1 + rnd() * 3, 20 + rnd() * 80);
+    }
+    return toTex(c, { srgb: true });
+  });
+}
+
+// 异星行星：条带云层 + 行星环
+// 行星贴图：条带气态巨行星。pal = [r, g, b] 基色，band = 条带起伏幅度
+export function planetTexture(pal = [120, 90, 190], seed = 31) {
+  return cached(`planet${pal}${seed}`, () => {
+    const [c, g] = mk(512, 256);
+    const rnd = mulberry32(seed);
+    const f1 = 0.06 + rnd() * 0.06, f2 = 0.18 + rnd() * 0.1;
+    for (let y = 0; y < 256; y += 2) {
+      const k = Math.sin(y * f1) * 0.5 + Math.sin(y * f2 + 1) * 0.3 + (rnd() - 0.5) * 0.2;
+      g.fillStyle = `rgb(${pal[0] + k * 60},${pal[1] + k * 50},${pal[2] + k * 40})`;
+      g.fillRect(0, y, 512, 2);
+    }
+    for (let i = 0; i < 40; i++) {
+      g.fillStyle = `rgba(255,235,250,${rnd() * 0.15})`;
+      g.beginPath();
+      g.ellipse(rnd() * 512, rnd() * 256, 20 + rnd() * 60, 3 + rnd() * 6, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+    return toTex(c, { repeat: false });
+  });
+}
+
+export function ringTexture(rgb = '210,200,255') {
+  return cached(`ring${rgb}`, () => {
+    const [c, g] = mk(512, 8);
+    for (let x = 0; x < 512; x++) {
+      const a = Math.max(0, Math.sin(x * 0.05) * 0.35 + Math.sin(x * 0.19) * 0.25 + 0.35) * Math.min(1, x / 40, (512 - x) / 40);
+      g.fillStyle = `rgba(${rgb},${a})`;
+      g.fillRect(x, 0, 1, 8);
+    }
+    return toTex(c, { repeat: false });
   });
 }
 
@@ -445,6 +584,16 @@ export function groundTexture(type) {
         g.beginPath();
         g.arc(rnd() * S, rnd() * S, 2 + rnd() * 7, 0, Math.PI * 2);
         g.fill();
+      }
+    } else if (type === 'forest') {
+      noiseFill(g, S, S, '#3a5a2e', 0.2, rnd, 3);
+      for (let i = 0; i < 1600; i++) {
+        g.fillStyle = rnd() < 0.5 ? `rgba(110,80,40,${0.2 + rnd() * 0.35})` : `rgba(90,150,60,${0.2 + rnd() * 0.3})`;
+        g.save();
+        g.translate(rnd() * S, rnd() * S);
+        g.rotate(rnd() * Math.PI);
+        g.fillRect(-4, -1.5, 8 + rnd() * 6, 3);
+        g.restore();
       }
     } else if (type === 'gravel') {
       noiseFill(g, S, S, '#8c8680', 0.22, rnd, 3);
@@ -607,7 +756,7 @@ export function chevronTexture(bg = '#ffd000', fg = '#1a1a1a') {
   });
 }
 
-// 加速带：蓝色霓虹箭头（11城原画中的蓝色箭头）
+// 加速带：蓝色霓虹箭头
 export function boostPadTexture(color = '#27c7ff') {
   return cached('boost' + color, () => {
     const [c, g] = mk(256, 512);

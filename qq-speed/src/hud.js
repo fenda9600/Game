@@ -92,16 +92,24 @@ export class HUD {
       g.closePath();
     };
     g.lineJoin = 'round';
-    g.strokeStyle = 'rgba(0,0,0,.55)';
-    g.lineWidth = 16;
+    g.strokeStyle = 'rgba(4,2,20,.6)';
+    g.lineWidth = 18;
     path();
     g.stroke();
-    g.strokeStyle = 'rgba(255,255,255,.92)';
-    g.lineWidth = 9;
+    // 霓虹线路
+    g.shadowColor = '#27f0ff';
+    g.shadowBlur = 14;
+    g.strokeStyle = 'rgba(39,240,255,.85)';
+    g.lineWidth = 10;
+    path();
+    g.stroke();
+    g.shadowBlur = 0;
+    g.strokeStyle = 'rgba(235,253,255,.95)';
+    g.lineWidth = 4;
     path();
     g.stroke();
     // 高架段着色
-    g.strokeStyle = 'rgba(39,199,255,.9)';
+    g.strokeStyle = 'rgba(255,61,240,.95)';
     g.lineWidth = 5;
     for (let i = 0; i < track.N; i++) {
       if (!track.bridge[i]) continue;
@@ -165,17 +173,33 @@ export class HUD {
     const a0 = Math.PI * 0.75, sweep = Math.PI * 1.5, maxK = 300;
     g.lineCap = 'round';
     g.lineWidth = 26;
-    g.strokeStyle = 'rgba(8,20,50,.7)';
+    g.strokeStyle = 'rgba(12,8,40,.75)';
     g.beginPath();
     g.arc(c, c, R, a0, a0 + sweep);
     g.stroke();
+    // 赛博仪表：外圈青色细环 + 分段刻度
+    g.lineCap = 'butt';
+    g.lineWidth = 2;
+    g.strokeStyle = 'rgba(39,240,255,.5)';
+    g.beginPath();
+    g.arc(c, c, R + 20, a0, a0 + sweep);
+    g.stroke();
+    g.lineWidth = 6;
+    g.strokeStyle = 'rgba(255,61,240,.35)';
+    for (let k = 0; k < 30; k++) {
+      const a = a0 + (sweep * k) / 30;
+      g.beginPath();
+      g.arc(c, c, R + 27, a, a + sweep / 30 - 0.03);
+      g.stroke();
+    }
+    g.lineCap = 'round';
     const f = Math.min(1, kmh / maxK);
     const grd = g.createLinearGradient(0, W, W, 0);
-    if (boost) { grd.addColorStop(0, '#27c7ff'); grd.addColorStop(1, '#ffffff'); }
-    else { grd.addColorStop(0, '#27c7ff'); grd.addColorStop(0.6, '#ffd23a'); grd.addColorStop(1, '#ff5a1f'); }
+    if (boost) { grd.addColorStop(0, '#27f0ff'); grd.addColorStop(1, '#ffffff'); }
+    else { grd.addColorStop(0, '#27f0ff'); grd.addColorStop(0.55, '#8a5cff'); grd.addColorStop(1, '#ff3df0'); }
     g.strokeStyle = grd;
     g.lineWidth = 18;
-    g.shadowColor = boost ? '#27c7ff' : '#ff8a00';
+    g.shadowColor = boost ? '#27f0ff' : '#ff3df0';
     g.shadowBlur = 18;
     g.beginPath();
     g.arc(c, c, R, a0, a0 + sweep * f);

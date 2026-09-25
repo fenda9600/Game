@@ -1,4 +1,4 @@
-// 键位：尽量还原 QQ飞车端游默认键位
+// 键位：经典赛车游戏键位
 // ↑↓←→ 驾驶 · Shift 漂移 · Ctrl 氮气/道具 · ↑(出弯点按) 或 W 小喷 · Alt 道具换位 · R 复位
 const PREVENT = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'AltLeft', 'AltRight', 'PageUp', 'PageDown', 'Tab', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'KeyW', 'KeyR']);
 

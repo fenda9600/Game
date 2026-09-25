@@ -7,6 +7,7 @@ const SONGS = [
   { name: '法老的试炼', bpm: 132, root: 55, prog: [[0, 3, 7], [1, 5, 8], [0, 3, 7], [-2, 1, 5]], lead: [0, 1, 4, 5, 7, 8, 7, 4], bassPat: [1, 1, 0, 1, 1, 0, 1, 1], style: 2 },
   { name: '冰雪狂飙', bpm: 140, root: 60, prog: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]], lead: [7, 12, 16, 12, 14, 12, 11, 7], bassPat: [1, 0, 1, 0, 1, 1, 1, 0], style: 3 },
   { name: '落日高速', bpm: 124, root: 57, prog: [[0, 3, 7], [-4, 0, 3], [-9, -5, -2], [-2, 2, 5]], lead: [12, 10, 7, 3, 7, 10, 12, 15], bassPat: [1, 1, 1, 1, 1, 1, 1, 1], style: 4 },
+  { name: '原始森林', bpm: 108, root: 50, prog: [[0, 3, 7], [5, 8, 12], [3, 7, 10], [-2, 2, 5]], lead: [7, 10, 12, 15, 12, 10, 7, 3], bassPat: [1, 0, 0, 1, 0, 1, 0, 0], style: 5 },
 ];
 
 export class GameAudio {
@@ -255,12 +256,12 @@ export class GameAudio {
     }
     // 和弦垫（每小节）
     if (s16 === 0)
-      for (const c of chord) this.musicTone(t, NOTE(root + c), spb * 15, song.style === 1 ? 'triangle' : 'sawtooth', 0.045, 1400, true);
+      for (const c of chord) this.musicTone(t, NOTE(root + c), spb * 15, song.style === 1 || song.style === 5 ? 'triangle' : 'sawtooth', 0.045, 1400, true);
     // 琶音主旋律
     if (s16 % 2 === 0) {
       const li = (s16 / 2 + bar * 2) % song.lead.length;
       const n = root + 12 + chord[0] + song.lead[li];
-      this.musicTone(t, NOTE(n), spb * 1.6, song.style === 2 ? 'triangle' : 'square', 0.06, 3000);
+      this.musicTone(t, NOTE(n), spb * 1.6, song.style === 5 ? 'sine' : song.style === 2 ? 'triangle' : 'square', song.style === 5 ? 0.08 : 0.06, 3000);
     }
   }
 

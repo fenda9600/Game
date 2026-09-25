@@ -2,7 +2,7 @@ import { clamp, damp, wrapAngle } from './util.js';
 import { updateFlames, TUNE } from './vehicle.js';
 import { updateTechFx } from './carModel.js';
 
-export const AI_NAMES = ['小橘子', '秋名山车神', '漂移少女', '氮气小王子', '风之子', '夜の车神', '闪电旋风', '小飞侠'];
+export const AI_NAMES = ['小星星', '山道车神', '漂移少女', '氮气小王子', '风之子', '夜の车神', '闪电旋风', '小飞侠'];
 
 export class AICar {
   constructor(track, model, name, skill, rnd) {

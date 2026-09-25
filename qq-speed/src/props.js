@@ -283,7 +283,7 @@ function buildStartGate(parent, track, style) {
   };
 }
 
-// 漂浮吉祥物气球（11城原画里的小橘子气球）
+// 漂浮吉祥物气球
 function buildMascotBalloon(color = 0xff9a1f) {
   const g = new THREE.Group();
   const head = new THREE.Mesh(new THREE.SphereGeometry(3, 24, 18), std(color, { roughness: 0.35 }));
@@ -484,8 +484,72 @@ function addBuilding(b, x, y, z, w, h, d, rot, kind, roofColor = 0x8f96a3) {
 
 // ---------- 各地图 ----------
 export function buildProps(mapId, ctx) {
-  const fn = { city: cityProps, aegean: aegeanProps, egypt: egyptProps, snow: snowProps, highway: highwayProps }[mapId];
-  return fn(ctx);
+  const fn = { city: cityProps, aegean: aegeanProps, egypt: egyptProps, snow: snowProps, highway: highwayProps, forest: forestProps }[mapId];
+  const gate = fn(ctx);
+  if (SPACE_SKY[mapId]) addSpaceSky(ctx, SPACE_SKY[mapId]);
+  return gate;
+}
+
+// ---------- 赛博太空天空：每张图都挂一颗带环行星 + 卫星 ----------
+// yaw：相对起跑方向的偏角（弧度，正 = 偏左），发车时就能在前上方看到；day = 白天半透明（暗面带自发光，不会是一块黑）
+const SPACE_SKY = {
+  city: { yaw: -0.3, up: 0.19, r: 440, pal: [190, 105, 215], ring: '170,240,255', tilt: 0.5, day: true, moons: [[-700, 140, 40, 0xd8f4ff]] },
+  aegean: { yaw: 0.32, up: 0.18, r: 400, pal: [235, 140, 165], ring: '255,230,200', tilt: -0.35, day: true, moons: [[680, 120, 34, 0xfff0f8]] },
+  egypt: { yaw: -0.28, up: 0.16, r: 520, pal: [220, 130, 80], ring: '255,210,160', tilt: 0.25, day: true, moons: [[-820, 220, 50, 0xffe2c4], [-1120, 40, 28, 0xffffff]] },
+  snow: { yaw: 0.3, up: 0.18, r: 440, pal: [130, 105, 225], ring: '200,250,255', tilt: -0.55, day: true, moons: [[700, 220, 44, 0xeef8ff]] },
+  highway: { yaw: 0.3, up: 0.16, r: 540, pal: [210, 80, 170], ring: '255,190,240', tilt: 0.3, day: false, moons: [[-860, 280, 48, 0xffd6f0], [-1200, 60, 26, 0xc8d0ff]] },
+  forest: { dir: [0.55, 0.19, -0.8], r: 360, pal: [120, 90, 190], ring: '210,200,255', tilt: 0.35, day: false, moons: [[-900, 260, 55, 0xcfd6ff], [-1350, -80, 32, 0xffc8e8]] },
+};
+
+function addSpaceSky(ctx, o) {
+  const { track, parent, updaters } = ctx;
+  let dir;
+  if (o.dir) dir = new THREE.Vector3(...o.dir).normalize();
+  else {
+    const s = track.sample(0, {});
+    const c = Math.cos(o.yaw), sn = Math.sin(o.yaw);
+    // 前向 (tx, tz)，左侧 = -右向
+    dir = new THREE.Vector3(s.tx * c - s.rx * sn, o.up, s.tz * c - s.rz * sn).normalize();
+  }
+  const blend = o.day ? { transparent: true, opacity: 0.94, depthWrite: false } : {};
+  const sky = new THREE.Group();
+  const R = o.r;
+  const tint = new THREE.Color(o.pal[0] / 255, o.pal[1] / 255, o.pal[2] / 255);
+  const planet = new THREE.Mesh(
+    new THREE.SphereGeometry(R, 48, 32),
+    new THREE.MeshStandardMaterial({ map: TX.planetTexture(o.pal, Math.round(R)), emissive: o.day ? tint : 0x2a1f55, emissiveIntensity: o.day ? 0.45 : 0.6, roughness: 1, fog: false, ...blend }),
+  );
+  planet.rotation.z = o.tilt;
+  sky.add(planet);
+  const r0 = R * 1.3, r1 = R * 2.2;
+  const ringGeo = new THREE.RingGeometry(r0, r1, 128, 1);
+  const rp = ringGeo.attributes.position, ruv = ringGeo.attributes.uv;
+  for (let i = 0; i < rp.count; i++) ruv.setXY(i, (Math.hypot(rp.getX(i), rp.getY(i)) - r0) / (r1 - r0), 0.5);
+  const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ map: TX.ringTexture(o.ring), transparent: true, opacity: o.day ? 0.85 : 1, side: THREE.DoubleSide, fog: false, depthWrite: false, toneMapped: false }));
+  ring.rotation.set(-1.25, 0.2, o.tilt);
+  sky.add(ring);
+  for (const [ox, oy, r, c] of o.moons) {
+    const moon = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: o.day ? 0.45 : 0.25, roughness: 1, fog: false, ...blend }));
+    moon.position.set(ox, oy, 0);
+    sky.add(moon);
+  }
+  sky.traverse((m) => { m.renderOrder = -9; });
+  sky.userData.spaceDir = dir;
+  // 行星方向上的云挪开，别把行星挡住
+  const clouds = parent.getObjectByName('clouds');
+  if (clouds) {
+    const B = track.bounds;
+    for (const c of clouds.children) {
+      const dx = c.position.x - B.cx, dz = c.position.z - B.cz, L = Math.hypot(dx, dz);
+      if ((dx * dir.x + dz * dir.z) / (L * Math.hypot(dir.x, dir.z)) > 0.78) c.visible = false;
+    }
+  }
+  parent.add(sky);
+  updaters.push((dt, t, cam) => {
+    sky.position.set(cam.x + dir.x * 2600, cam.y + dir.y * 2600, cam.z + dir.z * 2600);
+    sky.lookAt(cam.x, cam.y, cam.z);
+    planet.rotation.y = t * 0.01;
+  });
 }
 
 function alongTrack(track, step, fn, offset = 0) {
@@ -541,7 +605,7 @@ function commonTrackside(ctx, opts) {
   }
 }
 
-// ======================= 11城 =======================
+// ======================= 霓虹都市 =======================
 function cityProps(ctx) {
   const { track, batch, rnd, groundAt, parent, updaters } = ctx;
   const hw = track.halfW;
@@ -565,7 +629,7 @@ function cityProps(ctx) {
         batch.add(ant, std(0xd0d4dc, { metalness: 0.7 }), M(px, groundAt(px, pz) + h + 0.8, pz));
       }
     }
-  // 地标：球顶大楼（原画右侧）
+  // 地标：球顶大楼
   {
     const spot = findFree(track, rnd, 150, 470, 60, 40);
     if (spot) {
@@ -603,7 +667,7 @@ function cityProps(ctx) {
     billboards: [
       TX.billboardTexture('SPEED', '极速飞车', '#ff6a00', '#ffc400'),
       TX.billboardTexture('N2O', '氮气加速', '#1565c0', '#27c7ff'),
-      TX.billboardTexture('11城', 'CITY RACE', '#7b3df0', '#ff6fd8'),
+      TX.billboardTexture('NEON', '霓虹都市', '#7b3df0', '#ff6fd8'),
       TX.billboardTexture('DRIFT', '漂移集气', '#e53935', '#ff8a65'),
     ],
   });
@@ -657,7 +721,7 @@ function cityProps(ctx) {
       bt.rotation.z = Math.sin(t * 0.9 + bt.userData.v) * 0.05;
     }
   });
-  return buildStartGate(parent, track, { pillar: 0xf2f4f8, beam: 0x1d4fb0, text: 'START · 11城', bannerBg: '#1d4fb0', band: 0xe53935, metal: 0.3 });
+  return buildStartGate(parent, track, { pillar: 0xf2f4f8, beam: 0x1d4fb0, text: 'START · NEON CITY', bannerBg: '#1d4fb0', band: 0xe53935, metal: 0.3 });
 }
 
 function findFree(track, rnd, x, z, r, spread, tries = 60) {
@@ -721,7 +785,7 @@ function buildTowerBridge(ctx, d) {
     arch.position.set(0, 11, 0);
     arch.scale.set(1, 0.5, 1);
     tw.add(arch);
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(12, 2.4), new THREE.MeshStandardMaterial({ map: TX.textTexture('SPEEDQQ.COM', { w: 512, h: 96, bg: '#ff6a00', fg: '#fff', font: 'bold 60px Arial' }), emissive: 0x552200 }));
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(12, 2.4), new THREE.MeshStandardMaterial({ map: TX.textTexture('CYBER DRIFT', { w: 512, h: 96, bg: '#ff6a00', fg: '#fff', font: 'bold 60px Arial' }), emissive: 0x552200 }));
     sign.position.set(0, 17.5, -3.6);
     sign.rotation.y = Math.PI;
     tw.add(sign);
@@ -802,7 +866,7 @@ function buildArchBridge(ctx, d, color) {
   }
 }
 
-// ======================= 情迷爱琴海 =======================
+// ======================= 爱琴海岸 =======================
 function aegeanProps(ctx) {
   const { track, batch, rnd, groundAt, parent, updaters } = ctx;
   const hw = track.halfW;
@@ -884,7 +948,7 @@ function aegeanProps(ctx) {
   }, 5);
   commonTrackside(ctx, {
     chevrons: true, chevronBg: '#ffd000', chevronFg: '#1a1a1a',
-    billboards: [TX.billboardTexture('AEGEAN', '情迷爱琴海', '#1d63c9', '#5ab0ff'), TX.billboardTexture('SPEED', '极速飞车', '#ff8a00', '#ffd54a')],
+    billboards: [TX.billboardTexture('AEGEAN', '爱琴海岸', '#1d63c9', '#5ab0ff'), TX.billboardTexture('SPEED', '极速飞车', '#ff8a00', '#ffd54a')],
     bbStep: 260,
   });
   // 海滩遮阳伞
@@ -938,7 +1002,7 @@ function aegeanProps(ctx) {
   return buildStartGate(parent, track, { pillar: 0xf7f5f0, beam: 0xf7f5f0, text: 'START · AEGEAN', bannerBg: '#2a64c0', band: 0x2a64c0 });
 }
 
-// ======================= 法老金字塔 =======================
+// ======================= 沙海神殿 =======================
 function egyptProps(ctx) {
   const { track, batch, rnd, groundAt, parent } = ctx;
   const hw = track.halfW;
@@ -1024,7 +1088,7 @@ function egyptProps(ctx) {
       }
     }
   }
-  // 有翼狮身像（起点两侧，参考原画）
+  // 有翼狮身像（起点两侧）
   const sgate = track.sample(22, {});
   for (const side of [-1, 1]) {
     const lat = side * (hw + 7);
@@ -1068,10 +1132,10 @@ function egyptProps(ctx) {
   }
   commonTrackside(ctx, {
     chevrons: true, chevronBg: '#5b3f9e', chevronFg: '#f3e3b5',
-    billboards: [TX.billboardTexture('PHARAOH', '法老金字塔', '#5b3f9e', '#e8c547'), TX.billboardTexture('SPEED', '沙漠飞跃', '#e0861f', '#ffd54a')],
+    billboards: [TX.billboardTexture('TEMPLE', '沙海神殿', '#5b3f9e', '#e8c547'), TX.billboardTexture('SPEED', '沙漠飞跃', '#e0861f', '#ffd54a')],
     bbStep: 240,
   });
-  return buildStartGate(parent, track, { pillar: 0xe0c08a, beam: 0xe0c08a, text: 'START · PHARAOH', bannerBg: '#5b3f9e', band: 0x3a62c9, pylon: true, sunDisk: true, h: 12 });
+  return buildStartGate(parent, track, { pillar: 0xe0c08a, beam: 0xe0c08a, text: 'START · SAND TEMPLE', bannerBg: '#5b3f9e', band: 0x3a62c9, pylon: true, sunDisk: true, h: 12 });
 }
 
 function buildSphinx() {
@@ -1129,7 +1193,7 @@ function buildSphinx() {
   return g;
 }
 
-// ======================= 雪地大冒险 =======================
+// ======================= 冰雪峡谷 =======================
 function snowProps(ctx) {
   const { track, batch, rnd, groundAt, parent, updaters } = ctx;
   const hw = track.halfW;
@@ -1149,12 +1213,12 @@ function snowProps(ctx) {
   }, 9);
   commonTrackside(ctx, {
     lamps: true, lampStep: 60,
-    billboards: [TX.billboardTexture('SPEED', '雪地大冒险', '#1e4fb0', '#39c5ff'), TX.billboardTexture('Victory', '冲刺吧！', '#c62828', '#ff7a59')],
+    billboards: [TX.billboardTexture('SPEED', '冰雪峡谷', '#1e4fb0', '#39c5ff'), TX.billboardTexture('Victory', '冲刺吧！', '#c62828', '#ff7a59')],
     bbStep: 200,
   });
   addGrandstand(parent, batch, track.sample(track.length - 40, {}), 1, 70, hw, groundAt, 0xc62828, track);
   addGrandstand(parent, batch, track.sample(30, {}), -1, 60, hw, groundAt, 0x1e4fb0, track);
-  // 奖杯（原画中央）
+  // 奖杯
   {
     const s = track.sample(70, {});
     const lat = hw + 22;
@@ -1426,6 +1490,228 @@ function highwayProps(ctx) {
     blimp.rotation.y = -t * 0.025;
   });
   return buildStartGate(parent, track, { pillar: 0x2b2f3a, beam: 0xff7a3d, text: 'START · SUNSET HWY', bannerBg: '#ff5f3d', band: 0xffd23a, metal: 0.5 });
+}
+
+// ======================= 原始森林 =======================
+function forestGeos() {
+  return geo('forest', () => {
+    const trunk = new THREE.CylinderGeometry(0.55, 1, 1, 12, 4);
+    trunk.translate(0, 0.5, 0);
+    const root = new THREE.ConeGeometry(0.5, 1, 5);
+    root.translate(0, 0.5, 0);
+    const crown = new THREE.IcosahedronGeometry(1, 1);
+    const vine = new THREE.CylinderGeometry(1, 1, 1, 5);
+    vine.translate(0, -0.5, 0); // 从挂点向下垂
+    // 蕨类：7 片向外弯的叶片
+    const blades = [];
+    for (let k = 0; k < 7; k++) {
+      const b = new THREE.PlaneGeometry(0.36, 1.9, 1, 4);
+      const p = b.attributes.position;
+      for (let v = 0; v < p.count; v++) {
+        const y = p.getY(v) + 0.95;
+        p.setY(v, y);
+        p.setZ(v, Math.pow(y / 1.9, 2) * 0.9);
+        p.setX(v, p.getX(v) * (1 - Math.abs(y / 1.9 - 0.4)));
+      }
+      b.rotateX(-0.55);
+      b.rotateY((k / 7) * Math.PI * 2);
+      blades.push(b);
+    }
+    const fern = mergeGeometries(blades);
+    fern.computeVertexNormals();
+    const stem = new THREE.CylinderGeometry(0.12, 0.18, 1, 6);
+    stem.translate(0, 0.5, 0);
+    const cap = new THREE.SphereGeometry(0.6, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+    const rock = new THREE.IcosahedronGeometry(1, 0);
+    const log = new THREE.CylinderGeometry(1, 1, 1, 10);
+    log.rotateZ(Math.PI / 2);
+    const rune = new THREE.BoxGeometry(1, 1, 1);
+    rune.translate(0, 0.5, 0);
+    return { trunk, root, crown, vine, fern, stem, cap, rock, log, rune };
+  });
+}
+
+// 参天巨木：板状根 + 巨冠 + 垂藤（部分藤蔓发出生物荧光）
+function addGiantTree(batch, x, y, z, H, R, rnd, glowVines = 0) {
+  const g = forestGeos();
+  const bark = texMat('bark', TX.barkTexture(), { roughness: 1 });
+  batch.add(g.trunk, bark, M(x, y - 1, z, rnd() * 6, R, H, R));
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * Math.PI * 2 + rnd() * 0.5;
+    batch.add(g.root, bark, M(x + Math.sin(a) * R * 1.05, y - 0.6, z + Math.cos(a) * R * 1.05, a, R * 0.35, H * 0.16, R * 1.1, -0.45));
+  }
+  const greens = [flat(0x24502a), flat(0x2f6632), flat(0x3b7a36)];
+  const cr = R * 3.2;
+  for (let k = 0; k < 6; k++) {
+    const a = rnd() * Math.PI * 2, d = k === 0 ? 0 : cr * (0.4 + rnd() * 0.45);
+    const r = cr * (0.55 + rnd() * 0.35);
+    batch.add(g.crown, greens[k % 3], M(x + Math.sin(a) * d, y + H * (0.88 + rnd() * 0.12), z + Math.cos(a) * d, rnd() * 6, r, r * 0.5, r), false);
+  }
+  const vineM = std(0x2f5a2a);
+  const glowM = glow(0x27f0c8, 1.8);
+  for (let k = 0; k < 10; k++) {
+    const a = rnd() * Math.PI * 2, d = cr * (0.3 + rnd() * 0.6);
+    const len = H * (0.25 + rnd() * 0.3);
+    batch.add(g.vine, k < glowVines ? glowM : vineM, M(x + Math.sin(a) * d, y + H * 0.85, z + Math.cos(a) * d, 0, 0.09, len, 0.09), false);
+  }
+}
+
+function forestProps(ctx) {
+  const { track, batch, rnd, groundAt, parent, updaters } = ctx;
+  const hw = track.halfW;
+  const B = track.bounds;
+  const g = forestGeos();
+  const inWater = (x, z) => groundAt(x, z) < -0.6;
+  // 中央巨木（被 140° 长弯环绕）
+  addGiantTree(batch, 165, groundAt(165, 278), 278, 88, 8, rnd, 8);
+  // 其余巨木
+  for (let i = 0, n = 0; i < 600 && n < 46; i++) {
+    const x = B.minX - 260 + rnd() * (B.maxX - B.minX + 520);
+    const z = B.minZ - 260 + rnd() * (B.maxZ - B.minZ + 520);
+    const R = 2.2 + rnd() * 2.6;
+    if (!isFree(track, x, z, R + 9) || inWater(x, z)) continue;
+    addGiantTree(batch, x, groundAt(x, z), z, 38 + rnd() * 30, R, rnd, rnd() < 0.35 ? 2 : 0);
+    n++;
+  }
+  // 茂密的林子：高大针叶树 + 阔叶树
+  for (let i = 0; i < 2600; i++) {
+    const x = B.minX - 420 + rnd() * (B.maxX - B.minX + 840);
+    const z = B.minZ - 420 + rnd() * (B.maxZ - B.minZ + 840);
+    if (!isFree(track, x, z, 6) || inWater(x, z)) continue;
+    const gy = groundAt(x, z);
+    if (rnd() < 0.55) addPine(batch, x, gy - 0.3, z, 1.2 + rnd() * 1.4, rnd() * 6, false);
+    else addTree(batch, x, gy, z, 1.2 + rnd() * 1.2, rnd() * 6, [0x2f6a34, 0x3d7d3a, 0x255a2c][(rnd() * 3) | 0]);
+  }
+  // 路边：蕨类、发光蘑菇、苔石
+  const fernM = mat('fern', () => new THREE.MeshStandardMaterial({ color: 0x4d9a3f, roughness: 0.8, side: THREE.DoubleSide }));
+  const capMs = [glow(0x27f0c8, 2.2), glow(0xff4fd8, 2.2), glow(0xb6ff3a, 1.8), glow(0x9a6bff, 2.4)];
+  const stemM = std(0xe8f0e6, { roughness: 0.6 });
+  const rockM = flat(0x6c7a66);
+  const mossM = flat(0x4f7d3e);
+  alongTrack(track, 9, (s) => {
+    if (track.inTunnel(s.d) || track.bridge[s.i]) return;
+    for (const side of [-1, 1]) {
+      const lat = side * (hw + 3 + rnd() * 6);
+      const x = s.x + s.rx * lat, z = s.z + s.rz * lat;
+      if (!isFree(track, x, z, 2) || inWater(x, z)) continue;
+      const gy = groundAt(x, z);
+      const r = rnd();
+      if (r < 0.45) batch.add(g.fern, fernM, M(x, gy, z, rnd() * 6, 0.9 + rnd() * 0.9), false);
+      else if (r < 0.75) {
+        const cm = capMs[(rnd() * capMs.length) | 0];
+        const n = 1 + ((rnd() * 3) | 0);
+        for (let k = 0; k < n; k++) {
+          const mx = x + (rnd() - 0.5) * 2.4, mz = z + (rnd() - 0.5) * 2.4, sc = 0.7 + rnd() * 1.6;
+          batch.add(g.stem, stemM, M(mx, gy, mz, 0, sc, sc * (1 + rnd()), sc), false);
+          batch.add(g.cap, cm, M(mx, gy + sc * (1 + rnd() * 0.5), mz, rnd() * 6, sc * 1.2, sc * 0.8, sc * 1.2), false);
+        }
+      } else if (r < 0.88) {
+        const sc = 0.8 + rnd() * 1.8;
+        batch.add(g.rock, rockM, M(x, gy, z, rnd() * 6, sc * 1.3, sc * 0.7, sc));
+        batch.add(g.rock, mossM, M(x, gy + sc * 0.45, z, rnd() * 6, sc * 1.1, sc * 0.25, sc * 0.9), false);
+      }
+    }
+  }, 4);
+  for (let i = 0; i < 700; i++) {
+    const x = B.minX - 300 + rnd() * (B.maxX - B.minX + 600);
+    const z = B.minZ - 300 + rnd() * (B.maxZ - B.minZ + 600);
+    if (!isFree(track, x, z, 4) || inWater(x, z)) continue;
+    const gy = groundAt(x, z);
+    if (rnd() < 0.6) batch.add(g.fern, fernM, M(x, gy, z, rnd() * 6, 1 + rnd()), false);
+    else {
+      const sc = 1 + rnd() * 2.2;
+      batch.add(g.stem, stemM, M(x, gy, z, 0, sc, sc * 1.6, sc), false);
+      batch.add(g.cap, capMs[i % 4], M(x, gy + sc * 1.6, z, 0, sc * 1.3, sc * 0.9, sc * 1.3), false);
+    }
+  }
+  // 倒木
+  const bark = texMat('bark', TX.barkTexture(), { roughness: 1 });
+  for (let i = 0, n = 0; i < 300 && n < 40; i++) {
+    const x = B.minX - 200 + rnd() * (B.maxX - B.minX + 400);
+    const z = B.minZ - 200 + rnd() * (B.maxZ - B.minZ + 400);
+    if (!isFree(track, x, z, 10) || inWater(x, z)) continue;
+    const len = 8 + rnd() * 10, r = 0.6 + rnd() * 0.6;
+    batch.add(g.log, bark, M(x, groundAt(x, z) + r * 0.7, z, rnd() * 6, len, r, r));
+    n++;
+  }
+  // 古老符文石柱：石面嵌着霓虹纹路（原始森林里的赛博遗迹）
+  const stoneM = flat(0x55605a);
+  const runeM = glow(0x27f0c8, 2.6);
+  alongTrack(track, 110, (s) => {
+    if (track.inTunnel(s.d) || track.bridge[s.i]) return;
+    for (const side of [-1, 1]) {
+      const lat = side * (hw + 4.5);
+      const x = s.x + s.rx * lat, z = s.z + s.rz * lat;
+      if (!isFree(track, x, z, 2.5) || inWater(x, z)) continue;
+      const gy = groundAt(x, z), h = 5 + rnd() * 3;
+      batch.add(g.rune, stoneM, M(x, gy - 0.5, z, s.hd, 1.4, h, 1.4));
+      batch.add(g.rune, runeM, M(x, gy + h * 0.25, z, s.hd, 1.46, 0.18, 1.46), false);
+      batch.add(g.rune, runeM, M(x, gy + h * 0.62, z, s.hd, 1.46, 0.12, 1.46), false);
+    }
+  }, 30);
+  // 瀑布 + 瀑布潭
+  {
+    const cx = -128, cz = 318, dx = -0.808, dz = 0.59;
+    for (let k = 0; k < 7; k++) {
+      const a = rnd() * Math.PI * 2, d = 8 + rnd() * 10, sc = 7 + rnd() * 8;
+      const x = cx + Math.sin(a) * d, z = cz + Math.cos(a) * d;
+      batch.add(g.rock, rockM, M(x, groundAt(x, z) - 2, z, rnd() * 6, sc, sc * (0.8 + rnd() * 0.6), sc));
+    }
+    const wtex = TX.waterfallTexture().clone();
+    wtex.needsUpdate = true;
+    wtex.repeat.set(1, 1.5);
+    const fall = new THREE.Mesh(new THREE.PlaneGeometry(11, 31), new THREE.MeshBasicMaterial({ map: wtex, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
+    fall.position.set(cx + dx * 17, 14, cz + dz * 17);
+    fall.rotation.y = Math.atan2(dx, dz);
+    parent.add(fall);
+    const foam = new THREE.Mesh(new THREE.CircleGeometry(8, 24), new THREE.MeshBasicMaterial({ color: 0xe8fffb, transparent: true, opacity: 0.5, depthWrite: false }));
+    foam.rotation.x = -Math.PI / 2;
+    foam.position.set(cx + dx * 20, -1.35, cz + dz * 20);
+    parent.add(foam);
+    updaters.push((dt, t) => {
+      wtex.offset.y = (t * 1.6) % 1;
+      foam.material.opacity = 0.4 + Math.sin(t * 5) * 0.1;
+    });
+  }
+  // 萤火虫
+  if (ctx.quality !== 'low') {
+    const count = 420;
+    const pos = new Float32Array(count * 3);
+    const seed = new Float32Array(count);
+    for (let i = 0; i < count; i++) {
+      pos[i * 3] = (rnd() - 0.5) * 140;
+      pos[i * 3 + 1] = 0.5 + rnd() * 9;
+      pos[i * 3 + 2] = (rnd() - 0.5) * 140;
+      seed[i] = rnd() * 100;
+    }
+    const geoF = new THREE.BufferGeometry();
+    geoF.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const base = pos.slice();
+    // 固定像素大小：飘到镜头前也不会变成一大团光斑
+    const flies = new THREE.Points(geoF, new THREE.PointsMaterial({ color: 0xd8ff7a, size: 4, sizeAttenuation: false, map: TX.softDotTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+    flies.frustumCulled = false;
+    parent.add(flies);
+    updaters.push((dt, t, cam) => {
+      const p = geoF.attributes.position.array;
+      for (let i = 0; i < count; i++) {
+        const s = seed[i];
+        p[i * 3] = base[i * 3] + Math.sin(t * 0.5 + s) * 2.5;
+        p[i * 3 + 1] = base[i * 3 + 1] + Math.sin(t * 0.8 + s * 1.7) * 0.8;
+        p[i * 3 + 2] = base[i * 3 + 2] + Math.cos(t * 0.4 + s) * 2.5;
+      }
+      geoF.attributes.position.needsUpdate = true;
+      flies.position.set(Math.round(cam.x / 70) * 70, groundAt(cam.x, cam.z), Math.round(cam.z / 70) * 70);
+    });
+  }
+  commonTrackside(ctx, {
+    chevrons: true, chevronBg: '#0f2f2b', chevronFg: '#27f0c8',
+    billboards: [
+      TX.billboardTexture('PRIMEVAL', '原始森林', '#0f3b36', '#27f0c8'),
+      TX.billboardTexture('NEON WILD', '发光森林', '#3a0f5f', '#ff2bd6'),
+    ],
+    bbStep: 230,
+  });
+  return buildStartGate(parent, track, { pillar: 0x4a3222, beam: 0x2a1d12, text: 'START · PRIMEVAL FOREST', bannerBg: '#0f3b36', band: 0x27f0c8 });
 }
 
 export { clamp };

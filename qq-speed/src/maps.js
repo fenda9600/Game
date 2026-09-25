@@ -1,12 +1,16 @@
-// 五张地图的主题配置。视觉元素参考 QQ飞车官方地图原画：
-// 11城（塔桥、SPEED 飞艇、吉祥物气球、蓝色加速箭头）、情迷爱琴海（白墙蓝顶、石板路、三角梅）、
-// 法老金字塔（紫白格起点、有翼狮身像、太阳圆盘门楼）、雪地大冒险（雪松、奖杯、热气球、看台横幅）、
-// 落日高速（原创：黄昏滨海高速、龙门架指示牌、苜蓿叶立交、漂移区路面喷涂）
+import { LAYOUTS } from './layouts.js';
+import { distToPolyline } from './util.js';
+
+// 地图主题配置（全部原创场景）：
+// 霓虹都市（塔桥、SPEED 飞艇、吉祥物气球、蓝色加速箭头）、爱琴海岸（白墙蓝顶、石板路、三角梅）、
+// 沙海神殿（紫白格起点、有翼狮身像、太阳圆盘门楼）、冰雪峡谷（雪松、奖杯、热气球、看台横幅）、
+// 落日高速（黄昏滨海高速、龙门架指示牌、苜蓿叶立交、漂移区路面喷涂）、
+// 原始森林（异星天空下的巨木林：树洞隧道、溪谷木桥、瀑布潭、发光蘑菇）
 export const MAPS = [
   {
     id: 'city',
-    name: '11城',
-    en: 'CITY 11',
+    name: '霓虹都市',
+    en: 'NEON CITY',
     tag: '经典竞速 · 11 个弯道',
     desc: '跨河塔桥、摩天楼群与蓝色霓虹加速带，节奏感极强的都市赛道。',
     layout: 'city',
@@ -27,8 +31,8 @@ export const MAPS = [
   },
   {
     id: 'aegean',
-    name: '情迷爱琴海',
-    en: 'AEGEAN SEA',
+    name: '爱琴海岸',
+    en: 'AEGEAN COAST',
     tag: '山城爬坡 · 连续发卡弯',
     desc: '白墙蓝顶的海岛小镇，石板路盘山而上，发卡弯考验连续漂移。',
     layout: 'aegean',
@@ -50,8 +54,8 @@ export const MAPS = [
   },
   {
     id: 'egypt',
-    name: '法老金字塔',
-    en: 'PHARAOH',
+    name: '沙海神殿',
+    en: 'SAND TEMPLE',
     tag: '沙漠飞跃 · 神殿隧道',
     desc: '穿过法老神殿，冲上沙丘跳台飞跃，落地瞬间来一记落地喷！',
     layout: 'egypt',
@@ -72,8 +76,8 @@ export const MAPS = [
   },
   {
     id: 'snow',
-    name: '雪地大冒险',
-    en: 'SNOW ADVENTURE',
+    name: '冰雪峡谷',
+    en: 'FROST CANYON',
     tag: '8 字立交 · 冰雪隧道',
     desc: '雪松林与冰雪隧道，8 字形立交桥上下穿梭，终点看台为你欢呼。',
     layout: 'snow',
@@ -102,8 +106,7 @@ export const MAPS = [
     desc: '黄昏的滨海高速：30 米宽四车道、大半径高速弯与 270° 苜蓿叶匝道，一口气漂到底。',
     layout: 'highway',
     laps: 5, // 本图固定 5 圈
-    isNew: true,
-    sky: { top: '#3a3f8f', horizon: '#ffb27a', bottom: '#8a5a78', sun: [0.32, 0.2, -0.92], sunColor: '#ffc27a', sunI: 2.3 },
+    sky: { top: '#3a3f8f', horizon: '#ffb27a', bottom: '#8a5a78', sun: [0.32, 0.2, -0.92], sunColor: '#ffc27a', sunI: 2.3, stars: 0.45 },
     hemi: ['#ffd6b8', '#5d4f7a', 1.05],
     fog: ['#f0a88a', 420, 2500],
     ground: 'grass',
@@ -119,6 +122,33 @@ export const MAPS = [
     },
     isBridge: (x, z, y) => y > 3.5,
     bgm: 4,
+  },
+  {
+    id: 'forest',
+    name: '原始森林',
+    en: 'PRIMEVAL FOREST',
+    tag: '巨木林道 · 树洞隧道 · 溪谷木桥',
+    desc: '异星天空下的原始森林：巨木参天、发光蘑菇照亮林道，钻过树洞隧道，飞越溪谷木桥。',
+    layout: 'forest',
+    isNew: true,
+    sky: { top: '#161447', horizon: '#48b8a4', bottom: '#12302c', sun: [-0.45, 0.32, 0.83], sunColor: '#d2fff2', sunI: 2.2, stars: 1 },
+    hemi: ['#c4fff0', '#23382a', 1.2],
+    fog: ['#2d5e57', 240, 1600],
+    ground: 'forest',
+    groundTint: '#ffffff',
+    water: { color: '#22b3a2', deep: '#0b3b3f', y: -1.5 },
+    track: {
+      road: 'forest', wall: 'forest', curbA: '#27f0c8', curbB: '#18302c', deckColor: 0x6b4a2f,
+      checkerA: '#0d2b27', checkerB: '#27f0c8', boostColor: '#27f0c8',
+      boostPads: [{ at: [-45, 0] }, { at: [-274, 318] }, { at: [62, 350] }],
+      tunnels: [{ from: [5, 350], to: [125, 350] }],
+      tunnelTex: 'bark',
+      tunnelOuter: 0x5a3d26,
+      shoulder: { width: 4, tex: 'forest' },
+    },
+    // 溪流两侧 38 m 内按桥处理：地形不回填，溪水能从桥下流过
+    isBridge: (x, z) => distToPolyline(x, z, LAYOUTS.forest.river) < 38,
+    bgm: 5,
   },
 ];
 

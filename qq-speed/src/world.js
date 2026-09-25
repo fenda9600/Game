@@ -65,13 +65,26 @@ export function buildSky(cfg) {
       bottom: { value: new THREE.Color(cfg.bottom) },
       sunDir: { value: sunDir },
       sunColor: { value: new THREE.Color(cfg.sunColor) },
+      stars: { value: cfg.stars ?? 0 },
     },
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p.xyww; }`,
-    fragmentShader: `uniform vec3 top; uniform vec3 horizon; uniform vec3 bottom; uniform vec3 sunDir; uniform vec3 sunColor; varying vec3 vDir;
+    fragmentShader: `uniform vec3 top; uniform vec3 horizon; uniform vec3 bottom; uniform vec3 sunDir; uniform vec3 sunColor; uniform float stars; varying vec3 vDir;
+      float hash(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
       void main(){
         vec3 d = normalize(vDir);
         float h = d.y;
         vec3 c = h > 0.0 ? mix(horizon, top, pow(clamp(h,0.0,1.0), 0.55)) : mix(horizon, bottom, pow(clamp(-h,0.0,1.0), 0.4));
+        if (stars > 0.0 && h > 0.0) {
+          // 星空 + 星云带（赛博太空）
+          vec3 p = d * 260.0; vec3 id = floor(p); vec3 f = fract(p) - 0.5;
+          float r = hash(id);
+          float st = step(0.985, r) * smoothstep(0.32, 0.0, length(f)) * (0.5 + 0.5 * hash(id + 7.0));
+          float up = smoothstep(0.05, 0.45, h);
+          vec3 tint = mix(vec3(0.75, 0.9, 1.0), vec3(1.0, 0.75, 0.95), hash(id + 3.0));
+          c += tint * st * up * stars * 1.6;
+          float band = exp(-pow((d.x * 0.6 + d.z * 0.8 - h * 0.5) * 3.2, 2.0));
+          c += vec3(0.35, 0.12, 0.55) * band * up * stars * 0.35;
+        }
         float s = max(dot(d, sunDir), 0.0);
         c += sunColor * (pow(s, 900.0) * 6.0 + pow(s, 40.0) * 0.35 + pow(s, 6.0) * 0.12);
         gl_FragColor = vec4(c, 1.0);
@@ -90,6 +103,7 @@ export function buildSky(cfg) {
 
 export function buildClouds(rnd, center, count = 26) {
   const grp = new THREE.Group();
+  grp.name = 'clouds';
   const tex = cloudTexture();
   for (let i = 0; i < count; i++) {
     const a = rnd() * Math.PI * 2;

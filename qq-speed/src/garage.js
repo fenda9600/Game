@@ -6,7 +6,7 @@ const KEY = 'feiche3d.profile.v1';
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => n.toLocaleString('en-US');
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
-export const BODY_NAMES = { sport: '跑车', gt: 'GT 宽体', hyper: '超跑' };
+export const BODY_NAMES = { sport: '跑车', gt: 'GT 宽体', hyper: '超跑', spike: '尖峰卡丁车', marshmallow: '棉花糖卡丁车' };
 
 // 各车基础属性（相对原版手感的倍率）；price 0 = 初始赠送
 export const CARS = {
@@ -18,16 +18,23 @@ export const CARS = {
   yellow: { price: 2400, vmax: 1.05, accel: 1.04, handling: 0.98, drift: 1.0, nitro: 1.08, desc: '极速型超跑，长直道上的王者。' },
   purple: { price: 3500, vmax: 1.035, accel: 1.06, handling: 1.06, drift: 1.14, nitro: 1.12, desc: '漂移之王：甩尾更深、集气更猛。' },
   black: { price: 5000, vmax: 1.06, accel: 1.1, handling: 1.07, drift: 1.1, nitro: 1.14, desc: '顶级全能超跑，车神的最终座驾。' },
+  // 卡丁车：车身轻、转向快、漂移灵
+  mallow_berry: { price: 800, vmax: 0.99, accel: 1.1, handling: 1.1, drift: 1.06, nitro: 1.04, desc: '软绵绵的草莓棉花糖：起步快、转向灵，最好上手。' },
+  mallow_mint: { price: 1800, vmax: 1.0, accel: 1.08, handling: 1.08, drift: 1.08, nitro: 1.14, desc: '薄荷棉花糖：集气飞快，氮气一罐接一罐。' },
+  spike_red: { price: 2800, vmax: 1.05, accel: 1.06, handling: 1.02, drift: 1.1, nitro: 1.06, desc: '尖峰系列入门款：刀锋车鼻，出弯爆发强。' },
+  spike_neon: { price: 4200, vmax: 1.045, accel: 1.08, handling: 1.08, drift: 1.16, nitro: 1.1, desc: '霓虹刀锋：漂移角度更深，赛博夜色里最亮的那一辆。' },
+  spike_void: { price: 6800, vmax: 1.07, accel: 1.12, handling: 1.08, drift: 1.14, nitro: 1.14, desc: '尖峰旗舰：暗物质装甲 + 霓虹尾鳍，全能顶配。' },
 };
 
-// 装备改装（全车通用），每项 5 级
+// 装备改装（全车通用），每项 20 级；升级费用随等级二次增长（Lv1 约 80，Lv20 约 2300）
+export const MAX_LV = 20;
+const costCurve = (k, base = 1) => Math.round(((80 + 40 * k + 4 * k * k) * base) / 10) * 10;
 export const UPGRADES = [
-  { id: 'engine', name: '引擎', icon: '⚙️', desc: '极速 +0.8% / 级', cost: [200, 400, 700, 1100, 1600] },
-  { id: 'turbo', name: '涡轮', icon: '🌀', desc: '加速 +4% / 级', cost: [200, 400, 700, 1100, 1600] },
-  { id: 'tires', name: '轮胎', icon: '🛞', desc: '转向与抓地 +2.5%、漂移 +1.5% / 级', cost: [150, 350, 600, 950, 1400] },
-  { id: 'nitro', name: '氮气罐', icon: '🔥', desc: '集气 +3%、氮气 +0.12s、小喷推力 +0.4 / 级', cost: [200, 400, 700, 1100, 1600] },
-];
-const MAX_LV = 5;
+  { id: 'engine', name: '引擎', icon: '⚙️', desc: '极速 +0.3% / 级', base: 1 },
+  { id: 'turbo', name: '涡轮', icon: '🌀', desc: '加速 +1.25% / 级', base: 1 },
+  { id: 'tires', name: '轮胎', icon: '🛞', desc: '转向与抓地 +0.8%、漂移 +0.5% / 级', base: 0.85 },
+  { id: 'nitro', name: '氮气罐', icon: '🔥', desc: '集气 +1%、氮气 +0.04s、小喷推力 +0.12 / 级', base: 1 },
+].map((u) => ({ ...u, cost: Array.from({ length: MAX_LV }, (_, k) => costCurve(k, u.base)) }));
 
 export class Profile {
   constructor() {
@@ -84,14 +91,14 @@ export function perfFor(skinId, up) {
   const e = u.engine | 0, t = u.turbo | 0, r = u.tires | 0, n = u.nitro | 0;
   return {
     ...BASE_PERF,
-    vmax: c.vmax * (1 + 0.008 * e),
-    accel: c.accel * (1 + 0.04 * t),
-    turn: c.handling * (1 + 0.025 * r),
-    grip: c.handling * (1 + 0.025 * r),
-    drift: c.drift * (1 + 0.015 * r),
-    gauge: c.nitro * (1 + 0.03 * n),
-    nitroTime: (c.nitro - 1) * 3 + 0.12 * n,
-    spray: 0.4 * n,
+    vmax: c.vmax * (1 + 0.003 * e),
+    accel: c.accel * (1 + 0.0125 * t),
+    turn: c.handling * (1 + 0.008 * r),
+    grip: c.handling * (1 + 0.008 * r),
+    drift: c.drift * (1 + 0.005 * r),
+    gauge: c.nitro * (1 + 0.01 * n),
+    nitroTime: (c.nitro - 1) * 3 + 0.04 * n,
+    spray: 0.12 * n,
   };
 }
 
@@ -101,11 +108,11 @@ function statBars(skinId, up) {
   const f = perfFor(skinId, up);
   const k = (v, lo, hi) => Math.max(4, Math.min(100, ((v - lo) / (hi - lo)) * 100));
   return [
-    ['极速', k(b.vmax, 0.95, 1.12), k(f.vmax, 0.95, 1.12)],
-    ['加速', k(b.accel, 0.9, 1.4), k(f.accel, 0.9, 1.4)],
-    ['操控', k(b.turn, 0.9, 1.25), k(f.turn, 0.9, 1.25)],
-    ['漂移', k(b.drift, 0.9, 1.25), k(f.drift, 0.9, 1.25)],
-    ['氮气', k(b.gauge, 0.9, 1.35), k(f.gauge, 0.9, 1.35)],
+    ['极速', k(b.vmax, 0.95, 1.15), k(f.vmax, 0.95, 1.15)],
+    ['加速', k(b.accel, 0.9, 1.45), k(f.accel, 0.9, 1.45)],
+    ['操控', k(b.turn, 0.9, 1.3), k(f.turn, 0.9, 1.3)],
+    ['漂移', k(b.drift, 0.9, 1.3), k(f.drift, 0.9, 1.3)],
+    ['氮气', k(b.gauge, 0.9, 1.4), k(f.gauge, 0.9, 1.4)],
   ];
 }
 
@@ -225,9 +232,9 @@ export class GarageUI {
     $('gups').innerHTML = UPGRADES.map((u) => {
       const lv = p.up[u.id];
       const cost = p.upgradeCost(u.id);
-      const pips = Array.from({ length: MAX_LV }, (_, k) => `<i class="${k < lv ? 'on' : ''}"></i>`).join('');
+      const bar = `<span class="lvbar"><i style="width:${(lv / MAX_LV) * 100}%"></i></span>`;
       const btn = cost === null ? '<button disabled>已满级</button>' : `<button data-id="${u.id}"${p.coins < cost ? ' disabled' : ''}>升级 🪙 ${fmt(cost)}</button>`;
-      return `<div class="gup"><span class="ic">${u.icon}</span><div class="info"><b>${u.name} <small>Lv.${lv}</small></b><small>${u.desc}</small><span class="pips">${pips}</span></div>${btn}</div>`;
+      return `<div class="gup"><span class="ic">${u.icon}</span><div class="info"><b>${u.name} <small>Lv.${lv}/${MAX_LV}</small></b><small>${u.desc}</small>${bar}</div>${btn}</div>`;
     }).join('');
   }
 }

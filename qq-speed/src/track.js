@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { clamp, wrapAngle } from './util.js';
-import { roadTexture, wallTexture, curbTexture, checkerTexture, boostPadTexture, tunnelTexture, groundTexture } from './textures.js';
+import { roadTexture, wallTexture, curbTexture, checkerTexture, boostPadTexture, tunnelTexture, groundTexture, barkTexture } from './textures.js';
 
 const TEX_LEN = 24; // 路面贴图沿路长度（米）
 const WALL_TEX_LEN = 16;
@@ -498,24 +498,41 @@ export class Track {
     gi.setAttribute('uv', new THREE.Float32BufferAttribute(uvI, 2));
     gi.setIndex(idx);
     gi.computeVertexNormals();
-    const tt = tunnelTexture();
-    const inner = new THREE.Mesh(gi, new THREE.MeshStandardMaterial({ map: tt, emissiveMap: tt, emissive: 0xffffff, emissiveIntensity: 0.35, roughness: 0.8, side: THREE.DoubleSide }));
+    // 树洞隧道：内壁是树皮，靠一圈圈发光的菌丝环照明
+    const log = theme.tunnelTex === 'bark';
+    const tt = log ? barkTexture() : tunnelTexture();
+    const inner = new THREE.Mesh(gi, log
+      ? new THREE.MeshStandardMaterial({ map: tt, emissiveMap: tt, emissive: 0x6fe0c0, emissiveIntensity: 0.28, roughness: 0.95, side: THREE.DoubleSide })
+      : new THREE.MeshStandardMaterial({ map: tt, emissiveMap: tt, emissive: 0xffffff, emissiveIntensity: 0.35, roughness: 0.8, side: THREE.DoubleSide }));
     inner.castShadow = true;
     grp.add(inner);
     const go = new THREE.BufferGeometry();
     go.setAttribute('position', new THREE.Float32BufferAttribute(posO, 3));
     go.setIndex(idx);
     go.computeVertexNormals();
-    const outer = new THREE.Mesh(go, new THREE.MeshStandardMaterial({ color: theme.tunnelOuter ?? 0x8d8478, roughness: 1, side: THREE.DoubleSide }));
+    const outer = new THREE.Mesh(go, log
+      ? new THREE.MeshStandardMaterial({ map: tt, color: theme.tunnelOuter ?? 0x8d8478, roughness: 1, side: THREE.DoubleSide })
+      : new THREE.MeshStandardMaterial({ color: theme.tunnelOuter ?? 0x8d8478, roughness: 1, side: THREE.DoubleSide }));
     outer.castShadow = true;
     outer.receiveShadow = true;
     grp.add(outer);
+    if (log) {
+      const ringM = new THREE.MeshStandardMaterial({ color: 0x27f0c8, emissive: 0x27f0c8, emissiveIntensity: 2.2 });
+      for (let dd = d0 + 8; dd < d1 - 4; dd += 14) {
+        this.sample(dd, s);
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(hw - 0.15, 0.12, 6, 28, Math.PI), ringM);
+        ring.scale.set(1, (hTop - this.wallH) / (hw - 0.15), 1);
+        ring.position.set(s.x, s.y + this.wallH, s.z);
+        ring.rotation.y = s.hd;
+        grp.add(ring);
+      }
+    }
     // 洞口门框
     for (const dd of [d0, d1]) {
       this.sample(dd, s);
       const frame = new THREE.Mesh(
         new THREE.TorusGeometry(hw + 1.2, 1.3, 8, 20, Math.PI),
-        theme.portalMat || new THREE.MeshStandardMaterial({ color: 0xe8e2d4, roughness: 0.8 }),
+        theme.portalMat || (log ? new THREE.MeshStandardMaterial({ map: tt, color: 0x8a6440, roughness: 1 }) : new THREE.MeshStandardMaterial({ color: 0xe8e2d4, roughness: 0.8 })),
       );
       frame.scale.set(1, (hTop - this.wallH + 1.2) / (hw + 1.2), 1);
       frame.position.set(s.x, s.y + this.wallH, s.z);
