@@ -6,11 +6,16 @@ attribute vec4 aColor;
 attribute float aSize;
 varying vec4 vColor;
 uniform float uScale;
+uniform vec2 uNear; // 离镜头多近开始淡出（米）
+uniform float uMaxPx;
 #include <fog_pars_vertex>
 void main() {
   vColor = aColor;
   vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-  gl_PointSize = aSize * uScale / max(0.1, -mvPosition.z);
+  float dist = -mvPosition.z;
+  // 贴近镜头的粒子淡出并限制尺寸，避免一颗粒子糊满整个屏幕
+  vColor.a *= smoothstep(uNear.x, uNear.y, dist);
+  gl_PointSize = min(aSize * uScale / max(0.1, dist), uMaxPx);
   gl_Position = projectionMatrix * mvPosition;
   #include <fog_vertex>
 }`;
@@ -29,8 +34,9 @@ void main() {
 
 // 通用粒子池
 export class Particles {
-  constructor(max, additive) {
+  constructor(max, additive, maxFrac = 0.2) {
     this.max = max;
+    this.maxFrac = maxFrac;
     this.pos = new Float32Array(max * 3);
     this.col = new Float32Array(max * 4);
     this.size = new Float32Array(max);
@@ -50,7 +56,7 @@ export class Particles {
     g.setAttribute('aSize', new THREE.BufferAttribute(this.size, 1).setUsage(THREE.DynamicDrawUsage));
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e7);
     const m = new THREE.ShaderMaterial({
-      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uMap: { value: softDotTexture() }, uScale: { value: 400 } }]),
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uMap: { value: softDotTexture() }, uScale: { value: 400 }, uNear: { value: new THREE.Vector2(1.5, 5) }, uMaxPx: { value: 200 } }]),
       vertexShader: VERT,
       fragmentShader: FRAG,
       transparent: true,
@@ -63,7 +69,11 @@ export class Particles {
     this.points.renderOrder = additive ? 3 : 2;
   }
 
-  setScale(h) { this.points.material.uniforms.uScale.value = h * 0.9; }
+  setScale(h) {
+    const u = this.points.material.uniforms;
+    u.uScale.value = h * 0.9;
+    u.uMaxPx.value = h * this.maxFrac;
+  }
 
   emit(x, y, z, vx, vy, vz, life, s0, s1, r, g, b, a, grav = 0, drag = 0) {
     const i = this.cursor;

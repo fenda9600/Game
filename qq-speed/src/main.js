@@ -41,6 +41,7 @@ const hex = (c) => '#' + c.toString(16).padStart(6, '0');
 const TECH_CSS = Object.fromEntries(Object.entries(TECH_COLORS).map(([k, v]) => [k, hex(v)]));
 const TECH_RGB = Object.fromEntries(Object.entries(TECH_COLORS).map(([k, v]) => [k, [(v >> 16) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255]]));
 TECH_RGB.raw = [1, 0.72, 0.42];
+const CARRY = 0.85; // 尾焰 / 喷射粒子继承车速的比例
 
 // ---------- 地形基准函数 ----------
 function baseFor(id, noise, track, oases) {
@@ -993,8 +994,9 @@ class Game {
 
   // ---------- 特效 ----------
   makeFx() {
-    const smoke = new Particles(IS_TOUCH ? 900 : 1800, false);
-    const glow = new Particles(IS_TOUCH ? 900 : 1800, true);
+    // 烟雾允许大团；发光粒子（尾焰 / 火花）单颗最多占屏高 20%
+    const smoke = new Particles(IS_TOUCH ? 900 : 1800, false, 0.6);
+    const glow = new Particles(IS_TOUCH ? 900 : 1800, true, 0.2);
     const skids = new SkidMarks(2600);
     const R = Math.random;
     return {
@@ -1017,10 +1019,13 @@ class Game {
         glow.emit(x, y, z, (R() - 0.5), (R() - 0.5), (R() - 0.5), 0.25, 1.2, 0.2, 1, 0.6, 0.2, 1);
         smoke.emit(x, y, z, (R() - 0.5), R(), (R() - 0.5), 0.8, 0.8, 3, 0.85, 0.85, 0.88, 0.4);
       },
+      // 喷射爆发：粒子继承车速，贴着车尾散开，而不是留在原地让镜头穿过去
       boostBurst(r, color) {
         const c = new THREE.Color(color);
-        const bx = r.x - Math.sin(r.h) * 2.5, bz = r.z - Math.cos(r.h) * 2.5;
-        for (let i = 0; i < 30; i++) glow.emit(bx, r.y + 0.6, bz, (R() - 0.5) * 10 - Math.sin(r.h) * 10, R() * 4, (R() - 0.5) * 10 - Math.cos(r.h) * 10, 0.35 + R() * 0.3, 1.6, 0.2, c.r, c.g, c.b, 1, 0, 3);
+        const fx = Math.sin(r.h), fz = Math.cos(r.h);
+        const bx = r.x - fx * 2.5, bz = r.z - fz * 2.5;
+        const carry = Math.abs(r.s) * CARRY - 7;
+        for (let i = 0; i < 30; i++) glow.emit(bx, r.y + 0.6, bz, (R() - 0.5) * 8 + fx * carry, R() * 3, (R() - 0.5) * 8 + fz * carry, 0.3 + R() * 0.25, 1.1, 0.2, c.r, c.g, c.b, 1, 0, 0.3);
       },
     };
   }
@@ -1064,7 +1069,7 @@ class Game {
           const ex = r.x + lx * ox - fxv * 2.5, ez = r.z + lz * ox - fzv * 2.5;
           const back = 3 + R() * 7, spread = (R() - 0.5) * 6;
           const g = r.tech === 'gold' ? 0.8 : 1;
-          fx.glow.emit(ex, r.y + 0.35 + R() * 0.3, ez, fxv * (sp * 0.6 - back) + lx * spread, 1.5 + R() * 4, fzv * (sp * 0.6 - back) + lz * spread, 0.3 + R() * 0.25, 0.3, 0.04, tc[0] * g, tc[1] * g, tc[2] * g, 1, 16, 1.5);
+          fx.glow.emit(ex, r.y + 0.35 + R() * 0.3, ez, fxv * (sp * CARRY - back) + lx * spread, 1.5 + R() * 4, fzv * (sp * CARRY - back) + lz * spread, 0.3 + R() * 0.25, 0.3, 0.04, tc[0] * g, tc[1] * g, tc[2] * g, 1, 16, 0.4);
         }
       }
       const nitro = r.nitroTime > 0;
@@ -1075,7 +1080,9 @@ class Game {
           const n = nitro ? 2 : 1;
           for (let k = 0; k < n; k++) {
             const c = nitro ? (R() < 0.5 ? [0.3, 0.7, 1] : [0.85, 0.95, 1]) : [1, 0.6, 0.2];
-            fx.glow.emit(ex, r.y + 0.45, ez, -fxv * 6 + (R() - 0.5) * 2, R() * 1.5, -fzv * 6 + (R() - 0.5) * 2, 0.18 + R() * 0.1, nitro ? 1.3 : 0.9, 0.2, c[0], c[1], c[2], 1);
+            // 尾焰继承车速：高速时是一条贴在车尾的短焰，不会拖成一路光团
+            const carry = sp * CARRY - 6;
+            fx.glow.emit(ex, r.y + 0.45, ez, fxv * carry + (R() - 0.5) * 2, R() * 1.5, fzv * carry + (R() - 0.5) * 2, 0.18 + R() * 0.1, nitro ? 1.1 : 0.9, 0.2, c[0], c[1], c[2], 1);
           }
         }
       }
@@ -1142,16 +1149,19 @@ class Game {
     // 漂移时相机跟随速度方向，能看到车身侧滑
     const yawT = P.s >= 0 ? P.m + wrapAngle(P.h - P.m) * 0.35 : P.h;
     this.camYaw = dampAngle(this.camYaw, yawT, P.drifting ? 4.5 : 7, dt);
-    const boostPull = P.nitroTime > 0 ? 1.6 : P.smallBoost > 0 ? 0.8 : 0;
-    const dist = m.dist + Math.abs(P.s) * 0.018 + boostPull;
-    const want = new THREE.Vector3(P.x - Math.sin(this.camYaw) * dist, P.y + m.h, P.z - Math.cos(this.camYaw) * dist);
+    // 加速镜头：氮气时抬高机位、看得更远，尾焰落在视线下方，前方路面不被遮挡（平滑过渡）
+    this.boostCam = damp(this.boostCam || 0, P.nitroTime > 0 ? 1 : P.smallBoost > 0 ? 0.4 : 0, 3, dt);
+    const b = this.boostCam;
+    const dist = m.dist + Math.abs(P.s) * 0.018 + b * 0.8;
+    const want = new THREE.Vector3(P.x - Math.sin(this.camYaw) * dist, P.y + m.h + b * 0.9, P.z - Math.cos(this.camYaw) * dist);
     // 相机不钻地
     const gy = this.groundAt(want.x, want.z) + 1.0;
     if (want.y < gy) want.y = gy;
     if (P.airborne) want.y = Math.max(want.y, P.y + m.h);
     this.camPos.lerp(want, 1 - Math.exp(-14 * dt));
     this.camPos.y = damp(this.camPos.y, want.y, 8, dt);
-    const look = new THREE.Vector3(P.x + Math.sin(this.camYaw) * m.look, P.y + m.lookH, P.z + Math.cos(this.camYaw) * m.look);
+    const lookD = m.look + b * 6;
+    const look = new THREE.Vector3(P.x + Math.sin(this.camYaw) * lookD, P.y + m.lookH + b * 0.5, P.z + Math.cos(this.camYaw) * lookD);
     this.camLook.lerp(look, 1 - Math.exp(-18 * dt));
     cam.position.copy(this.camPos);
     if (this.shake > 0) {
@@ -1162,11 +1172,11 @@ class Game {
       this.shake = Math.max(0, this.shake - dt * 1.8);
     }
     if (P.nitroTime > 0) {
-      cam.position.x += (Math.random() - 0.5) * 0.06;
-      cam.position.y += (Math.random() - 0.5) * 0.06;
+      cam.position.x += (Math.random() - 0.5) * 0.025;
+      cam.position.y += (Math.random() - 0.5) * 0.025;
     }
     cam.lookAt(this.camLook);
-    const fovT = 66 + Math.abs(P.s) * 0.12 + (P.nitroTime > 0 ? 9 : 0) + (P.smallBoost > 0 ? 4 : 0);
+    const fovT = 66 + Math.abs(P.s) * 0.12 + b * 6;
     cam.fov = damp(cam.fov, fovT, 4, dt);
     cam.updateProjectionMatrix();
   }
@@ -1189,7 +1199,7 @@ class Game {
       const k = clamp((Math.abs(P.s) - 42) / 30, 0, 1) * 0.6 + (P.nitroTime > 0 ? 0.6 : 0) + (P.smallBoost > 0 ? 0.25 : 0);
       this.hud.speedLines(dt, k, P.nitroTime > 0 ? '#bfe9ff' : '#ffffff');
     } else if (this.hud.lines.length) this.hud.clearFx();
-    if (this.bloom) this.bloom.strength = (this.settings.quality === 'high' ? 0.75 : 0.6) + (P && P.nitroTime > 0 ? 0.3 : 0);
+    if (this.bloom) this.bloom.strength = (this.settings.quality === 'high' ? 0.75 : 0.6) + (P && P.nitroTime > 0 ? 0.12 : 0);
     if (this.composer) this.composer.render(dt);
     else this.renderer.render(this.scene, this.camera);
   }
