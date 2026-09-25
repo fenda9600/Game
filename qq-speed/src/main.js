@@ -9,7 +9,7 @@ import { MAPS, MODES } from './maps.js';
 import { Track } from './track.js';
 import { buildSky, buildClouds, buildGround, buildWater, buildMountains, Batch, makeNoise } from './world.js';
 import { buildProps, isFree } from './props.js';
-import { buildCar, CAR_SKINS } from './carModel.js';
+import { buildCar, CAR_SKINS, TECH_COLORS } from './carModel.js';
 import { PlayerCar, TUNE, NO_INPUT } from './vehicle.js';
 import { AICar, AI_NAMES } from './ai.js';
 import { Particles, SkidMarks } from './effects.js';
@@ -19,6 +19,7 @@ import { HUD } from './hud.js';
 import { ItemSystem } from './items.js';
 import { clamp, lerp, damp, dampAngle, wrapAngle, mulberry32, formatTime, smoothstep } from './util.js';
 import { setMaxAniso } from './textures.js';
+import { Profile, GarageUI, CARS, perfFor, raceReward, BODY_NAMES } from './garage.js';
 
 const $ = (id) => document.getElementById(id);
 const STORE = 'feiche3d.v1';
@@ -35,6 +36,11 @@ const QUALITY = [
 const LAPS = [1, 2, 3, 5];
 const IS_TOUCH = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 const DT = 1 / 120;
+const END_DELAY = 5; // 第一名冲线后多少秒结束比赛
+const hex = (c) => '#' + c.toString(16).padStart(6, '0');
+const TECH_CSS = Object.fromEntries(Object.entries(TECH_COLORS).map(([k, v]) => [k, hex(v)]));
+const TECH_RGB = Object.fromEntries(Object.entries(TECH_COLORS).map(([k, v]) => [k, [(v >> 16) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255]]));
+TECH_RGB.raw = [1, 0.72, 0.42];
 
 // ---------- 地形基准函数 ----------
 function baseFor(id, noise, track, oases) {
@@ -59,6 +65,15 @@ function baseFor(id, noise, track, oases) {
       }
       return h;
     };
+  if (id === 'highway')
+    return (x, z) => {
+      // 隧道上方的山脊（沿北侧直道）
+      const rx = Math.max(0, Math.abs(x - 85) - 95), rz = (z - 470) * 1.25;
+      const ridge = 26 * (1 - smoothstep(0, 135, Math.hypot(rx, rz)));
+      const land = 1.2 + noise.fbm(x * 0.006, z * 0.006) * 7 + ridge + Math.max(0, Math.hypot(x - cx, z - cz) - 850) * 0.12;
+      // 主直道南侧是海湾
+      return lerp(land, -9, smoothstep(-40, -115, z));
+    };
   return (x, z) => 3 + noise.fbm(x * 0.004, z * 0.004, 4) * 26 + Math.max(0, Math.hypot(x - cx, z - cz) - 650) * 0.18;
 }
 
@@ -74,6 +89,9 @@ function tintFor(id, noise) {
     } else if (id === 'egypt') {
       if (h < -1) col.setRGB(0.6, 0.85, 0.45);
       else col.setRGB(1 + n * 0.1, 0.97 + n * 0.08, 0.92);
+    } else if (id === 'highway') {
+      if (h < -0.6) col.setRGB(1.5, 1.25, 0.9);
+      else col.setRGB(0.95 + n * 0.12, 0.92 + n * 0.06, 0.72);
     } else col.setRGB(0.92 + n * 0.06, 0.96 + n * 0.04, 1.0);
   };
 }
@@ -83,12 +101,15 @@ const MOUNTAINS = {
   aegean: { color: 0x9c9a74, r0: 1500, r1: 500, h0: 140, h1: 220 },
   egypt: { color: 0xd9ae72, r0: 1500, r1: 600, h0: 50, h1: 90, count: 40 },
   snow: { color: 0x6f8fb8, cap: 0xf2f7ff, r0: 1400, r1: 500, h0: 240, h1: 300 },
+  highway: { color: 0x6a5a8c, r0: 1500, r1: 500, h0: 80, h1: 170 },
 };
 
 class Game {
   constructor() {
     this.settings = Object.assign({ map: 'city', mode: 'speed', skin: 0, laps: 2, diff: 1, quality: IS_TOUCH ? 'mid' : 'high', song: 0 }, this.load());
     if (!LAPS.includes(this.settings.laps)) this.settings.laps = 3;
+    this.profile = new Profile();
+    if (!CAR_SKINS[this.settings.skin] || !this.profile.owns(CAR_SKINS[this.settings.skin].id)) this.settings.skin = 0;
     this.canvas = $('gl');
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.toneMapping = THREE.NeutralToneMapping;
@@ -105,6 +126,7 @@ class Game {
     this.audio = new GameAudio();
     this.input = new Input();
     this.hud = new HUD();
+    this.hud.touch = IS_TOUCH;
     this.fx = this.makeFx();
     this.scene.add(this.fx.smoke.points, this.fx.glow.points, this.fx.skids.mesh);
     this.state = 'menu';
@@ -198,7 +220,7 @@ class Game {
   buildMenu() {
     const S = this.settings;
     const mapsEl = $('maps');
-    mapsEl.innerHTML = MAPS.map((m) => `<div class="map" data-id="${m.id}"><div class="nm">${m.name}</div><div class="en">${m.en}</div><div class="tg">${m.tag}</div></div>`).join('');
+    mapsEl.innerHTML = MAPS.map((m) => `<div class="map" data-id="${m.id}"><div class="nm">${m.name}</div><div class="en">${m.en}</div><div class="tg">${m.tag}</div>${m.isNew ? '<span class="new">NEW</span>' : ''}</div>`).join('');
     const opts = (el, list, key, label, sub) => {
       el.innerHTML = list.map((it, i) => `<div class="opt" data-i="${i}">${label(it)}${sub ? `<small>${sub(it)}</small>` : ''}</div>`).join('');
     };
@@ -206,15 +228,26 @@ class Game {
     opts($('laps'), LAPS, 'laps', (l) => `${l} 圈`);
     opts($('diff'), DIFFS, 'diff', (d) => d.name);
     opts($('quality'), QUALITY, 'quality', (q) => q.name);
-    $('skins').innerHTML = CAR_SKINS.map((s, i) => `<div class="skin" data-i="${i}" title="${s.name}" style="background:linear-gradient(135deg,#${s.body.toString(16).padStart(6, '0')} 55%,#${s.accent.toString(16).padStart(6, '0')} 56%)"></div>`).join('');
+    // 赛车按价格排序；未拥有的显示锁，点击直接去车库
+    const carOrder = CAR_SKINS.map((c, i) => i).sort((a, b) => CARS[CAR_SKINS[a].id].price - CARS[CAR_SKINS[b].id].price);
     const refresh = () => {
+      $('skins').innerHTML = carOrder.map((i) => {
+        const c = CAR_SKINS[i];
+        const own = this.profile.owns(c.id);
+        return `<div class="skin${own ? '' : ' lock'}${i === S.skin ? ' sel' : ''}" data-i="${i}" title="${c.name}${own ? '' : ' · 🪙 ' + CARS[c.id].price}" style="background:linear-gradient(135deg,${hex(c.body)} 55%,${hex(c.accent)} 56%)">${own ? '' : '<b>🔒</b>'}</div>`;
+      }).join('');
+      $('mcoins').textContent = this.profile.coins.toLocaleString('en-US');
       mapsEl.querySelectorAll('.map').forEach((e) => e.classList.toggle('sel', e.dataset.id === S.map));
       $('modes').querySelectorAll('.opt').forEach((e) => e.classList.toggle('sel', MODES[e.dataset.i].id === S.mode));
-      $('laps').querySelectorAll('.opt').forEach((e) => e.classList.toggle('sel', LAPS[e.dataset.i] === S.laps));
+      const fixed = MAPS.find((m) => m.id === S.map).laps;
+      $('laps').querySelectorAll('.opt').forEach((e) => {
+        e.classList.toggle('sel', LAPS[e.dataset.i] === (fixed || S.laps));
+        e.classList.toggle('lock', !!fixed && LAPS[e.dataset.i] !== fixed);
+      });
+      $('lapnote').textContent = fixed ? `本赛道固定 ${fixed} 圈` : '';
       $('diff').querySelectorAll('.opt').forEach((e) => e.classList.toggle('sel', +e.dataset.i === S.diff));
       $('quality').querySelectorAll('.opt').forEach((e) => e.classList.toggle('sel', QUALITY[e.dataset.i].id === S.quality));
-      $('skins').querySelectorAll('.skin').forEach((e) => e.classList.toggle('sel', +e.dataset.i === S.skin));
-      $('skinname').textContent = CAR_SKINS[S.skin].name;
+      $('skinname').textContent = `${CAR_SKINS[S.skin].name} · ${BODY_NAMES[CAR_SKINS[S.skin].bodyType]}`;
       this.save();
     };
     mapsEl.addEventListener('click', (e) => {
@@ -233,10 +266,23 @@ class Game {
       this.audio.play('click');
     });
     bind('modes', (i) => (S.mode = MODES[i].id));
-    bind('laps', (i) => (S.laps = LAPS[i]));
+    bind('laps', (i) => { if (!MAPS.find((m) => m.id === S.map).laps) S.laps = LAPS[i]; });
     bind('diff', (i) => (S.diff = i));
     bind('quality', (i) => { S.quality = QUALITY[i].id; this.setupQuality(); });
-    bind('skins', (i) => { S.skin = i; if (this.state === 'menu') this.startDemo(); });
+    bind('skins', (i) => {
+      if (!this.profile.owns(CAR_SKINS[i].id)) return this.openGarage(i);
+      S.skin = i;
+      if (this.state === 'menu') this.startDemo();
+    });
+    this.refreshMenu = refresh;
+    this.garage = new GarageUI(this.profile, {
+      sound: (n) => this.audio.play(n),
+      onPreview: (i) => { this.previewSkin = i; this.startDemo(); },
+      onSelect: (i) => { S.skin = i; refresh(); },
+      onClose: () => { this.previewSkin = null; $('menu').classList.remove('hidden'); refresh(); this.startDemo(); },
+    });
+    $('garageBtn').addEventListener('click', () => { this.audio.play('click'); this.openGarage(S.skin); });
+    $('resGarage').addEventListener('click', () => { this.toMenu(); this.openGarage(S.skin); });
     $('start').addEventListener('click', () => this.startRace());
     $('resume').addEventListener('click', () => this.togglePause());
     $('restart').addEventListener('click', () => { $('pause').classList.add('hidden'); this.startRace(); });
@@ -246,9 +292,16 @@ class Game {
     refresh();
   }
 
+  openGarage(view) {
+    if (this.state !== 'menu') return;
+    $('menu').classList.add('hidden');
+    this.garage.open(view, this.settings.skin);
+  }
+
   toMenu() {
     ['pause', 'result'].forEach((i) => $(i).classList.add('hidden'));
     $('menu').classList.remove('hidden');
+    this.refreshMenu();
     $('touch').classList.add('hidden');
     this.hud.show(false);
     this.hud.countdown('');
@@ -256,6 +309,7 @@ class Game {
   }
 
   onKey(code) {
+    if (code === 'Escape' && this.garage.isOpen) return this.garage.close();
     if (code === 'Escape' || code === 'KeyP') {
       if (this.state === 'race' || this.state === 'countdown' || this.state === 'paused') this.togglePause();
     } else if (code === 'KeyC') this.camMode = (this.camMode + 1) % 3;
@@ -392,10 +446,10 @@ class Game {
       let r;
       if (k === playerSlot) {
         const model = buildCar(CAR_SKINS[S.skin], { isPlayer: true });
-        r = new PlayerCar(this.track, model, '我');
+        r = new PlayerCar(this.track, model, '我', perfFor(CAR_SKINS[S.skin].id, this.profile.up));
         r.reset(d, lat);
       } else {
-        const skin = CAR_SKINS[withPlayer ? skins[ai % skins.length] : (k + S.skin) % CAR_SKINS.length];
+        const skin = CAR_SKINS[withPlayer ? skins[ai % skins.length] : (k + (this.previewSkin ?? S.skin)) % CAR_SKINS.length];
         const model = buildCar(skin, { name: names[ai % names.length] });
         const skill = lerp(diff.skill[0], diff.skill[1], withPlayer ? rnd() : 0.8 + rnd() * 0.2);
         r = new AICar(this.track, model, names[ai % names.length], skill, rnd);
@@ -408,7 +462,7 @@ class Game {
       r.itemTimer = 2 + rnd() * 2;
       r.finished = false;
       r.finishTime = 0;
-      r.stats = { drift: 0, small: 0, perfect: 0, double: 0, nitro: 0, crash: 0, top: 0, land: 0 };
+      r.stats = { drift: 0, small: 0, perfect: 0, double: 0, chain: 0, nitro: 0, crash: 0, top: 0, land: 0 };
       if (r.isPlayer) {
         r.lapsDone = -1;
         r.owed = true;
@@ -430,6 +484,7 @@ class Game {
     this.raceTime = 0;
     this.demoTarget = 0;
     this.demoT = 0;
+    this.demoCut = true;
     if (this.items) { this.items.dispose(); this.items = null; }
   }
 
@@ -438,6 +493,7 @@ class Game {
     this.audio.init();
     ['menu', 'pause', 'result'].forEach((i) => $(i).classList.add('hidden'));
     this.itemMode = this.settings.mode === 'item';
+    this.laps = this.map.laps || this.settings.laps;
     this.makeRacers(true);
     if (this.items) this.items.dispose();
     this.items = this.itemMode ? new ItemSystem(this.scene, this.track, this, mulberry32(Date.now() & 0xffff)) : null;
@@ -450,6 +506,9 @@ class Game {
     this.cdShown = -1;
     this.raceTime = 0;
     this.firstFinish = -1;
+    this.firstFinisher = null;
+    this.hud.finalCount('');
+    this.hud.clearCombo();
     this.startBoostReady = false;
     this.startTried = false;
     this.resultShown = false;
@@ -549,6 +608,7 @@ class Game {
       for (const r of this.racers) if (!r.isPlayer && !r.finished) this.items.aiThink(r, dt, this.standings);
     }
     if (P) this.handleEvents(P);
+    for (const r of this.racers) if (!r.isPlayer) this.handleAIEvents(r);
     this.emitEffects(dt);
     this.fx.smoke.update(dt);
     this.fx.glow.update(dt);
@@ -558,7 +618,7 @@ class Game {
     if (this.track.boostPads) for (const bp of this.track.boostPads) bp.mat.map.offset.y = -this.time * 1.2;
 
     if (P && (racing || st === 'finish' || st === 'countdown')) this.updateRaceHUD(dt);
-    if (st === 'race' || st === 'finish') this.checkRaceEnd(dt);
+    if (st === 'race' || st === 'finish') this.checkRaceEnd();
 
     // 声音
     if (P && st !== 'menu') {
@@ -630,16 +690,18 @@ class Game {
     const t = this.raceTime - (r.lapStart || 0);
     r.lapStart = this.raceTime;
     r.lapTimes.push(t);
-    const laps = this.settings.laps;
+    const laps = this.laps;
     if (r.lapsDone >= laps && !r.finished) {
       r.finished = true;
       r.finishTime = this.raceTime;
-      if (this.firstFinish < 0) this.firstFinish = this.raceTime;
+      if (this.firstFinish < 0) {
+        this.firstFinish = this.raceTime;
+        this.firstFinisher = r;
+      }
       if (r.isPlayer) {
         this.hud.message('完成比赛!', '#ffd23a');
         this.audio.play('finish');
         this.state = 'finish';
-        this.finishT = 0;
       }
       return;
     }
@@ -651,20 +713,13 @@ class Game {
     }
   }
 
-  checkRaceEnd(dt) {
-    const P = this.player;
-    if (this.resultShown) return;
-    if (this.state === 'finish') {
-      this.finishT += dt;
-      const allDone = this.racers.every((r) => r.finished);
-      if (this.finishT > 4 && (allDone || this.raceTime - this.firstFinish > 10 || this.finishT > 12)) this.showResults();
-      return;
-    }
-    if (this.firstFinish >= 0 && !P.finished) {
-      const left = 10 - (this.raceTime - this.firstFinish);
-      this.hud.finalCount(`有车手已冲线！剩余 ${Math.max(0, Math.ceil(left))} 秒`);
-      if (left <= 0) this.showResults();
-    }
+  // 第一名冲线后 END_DELAY 秒整场比赛结束（未冲线的按当前进度排名）
+  checkRaceEnd() {
+    if (this.resultShown || this.firstFinish < 0) return;
+    const left = END_DELAY - (this.raceTime - this.firstFinish);
+    const who = this.firstFinisher === this.player ? '你已夺冠' : `${this.firstFinisher.name} 已冲线`;
+    this.hud.finalCount(`🏁 ${who}！比赛将在`, Math.max(0, Math.ceil(left)));
+    if (left <= 0 || this.racers.every((r) => r.finished)) this.showResults();
   }
 
   showResults() {
@@ -675,16 +730,34 @@ class Game {
     const order = [...this.standings];
     const P = this.player;
     const place = order.indexOf(P) + 1;
-    const title = !P.finished ? '未完成比赛' : place === 1 ? '冠军！' : `第 ${place} 名`;
+    const title = place === 1 ? '冠军！' : `第 ${place} 名${P.finished ? '' : '（未冲线）'}`;
     $('resTitle').textContent = title;
-    $('resTitle').classList.toggle('win', P.finished && place === 1);
+    $('resTitle').classList.toggle('win', place === 1);
     const st = P.stats;
     $('resStats').innerHTML = [
-      ['漂移', st.drift], ['小喷', st.small], ['完美小喷', st.perfect], ['双喷', st.double], ['氮气', st.nitro], ['最高时速', Math.round(st.top) + ''], ['碰撞', st.crash],
+      ['漂移', st.drift], ['小喷', st.small], ['完美小喷', st.perfect], ['双喷', st.double], ['接氮气', st.chain], ['氮气', st.nitro], ['最高时速', Math.round(st.top) + ''], ['碰撞', st.crash],
     ].map(([k, v]) => `<div class="stat"><b>${v}</b>${k}</div>`).join('');
+    // 金币结算
+    const rw = raceReward({ place, laps: this.laps, diff: this.settings.diff, stats: st });
+    const pf = this.profile;
+    pf.races++;
+    if (place === 1) pf.wins++;
+    pf.addCoins(rw.total);
+    $('resCoins').innerHTML = rw.lines.map(([k, v]) => `<div class="rl"><span>${k}</span><b>${v >= 0 ? '+' : ''}${v}</b></div>`).join('') +
+      `<div class="rt"><span>获得金币</span><b id="resCoinNum">+0</b></div><div class="rb">余额 🪙 ${pf.coins.toLocaleString('en-US')} · 可在车库买车 / 改装</div>`;
+    const t0 = performance.now() + 500;
+    const tick = () => {
+      const k = Math.min(1, Math.max(0, (performance.now() - t0) / 1100));
+      const el = $('resCoinNum');
+      if (!el) return;
+      el.textContent = '+' + Math.round(rw.total * (1 - Math.pow(1 - k, 3)));
+      if (k < 1) requestAnimationFrame(tick);
+      else this.audio.play('gauge');
+    };
+    requestAnimationFrame(tick);
     $('resBody').innerHTML = order.map((r, i) => {
       const best = r.lapTimes.length ? Math.min(...r.lapTimes) : 0;
-      const total = r.finished ? formatTime(r.finishTime) : `未完成 (${Math.floor(Math.max(0, Math.min(99, (r.progress / L) * 100 / this.settings.laps)))}%)`;
+      const total = r.finished ? formatTime(r.finishTime) : `未完成 (${Math.floor(Math.max(0, Math.min(99, (r.progress / L) * 100 / this.laps)))}%)`;
       return `<tr class="${r.isPlayer ? 'me' : ''}"><td class="pos">${i + 1}</td><td>${r.name}</td><td>${total}</td><td>${formatTime(best)}</td></tr>`;
     }).join('');
     setTimeout(() => {
@@ -790,39 +863,61 @@ class Game {
   }
 
   // ---------- 玩家事件 → 提示/音效/特效 ----------
+  // 技巧链配色与车尾火花一致：蓝=小喷，金=双喷，紫=接氮气
   handleEvents(P) {
     const st = P.stats;
+    const H = this.hud;
     st.top = Math.max(st.top, P.speedKmh);
     for (const e of P.events) {
       switch (e.type) {
         case 'driftStart': st.drift++; break;
+        case 'driftEnd':
+          if (e.data.clean) H.combo(`漂移 ${e.data.time.toFixed(1)}s`, 'w', true);
+          break;
         case 'smallBoost':
           st.small++;
           if (e.data.perfect) st.perfect++;
-          this.hud.message(e.data.perfect ? '完美小喷!' : '小喷!', '#ff9a1f');
+          H.message(e.data.perfect ? '完美小喷!' : '小喷!', TECH_CSS.blue);
+          H.combo(`${e.data.perfect ? '完美小喷' : '小喷'} ${e.data.t.toFixed(2)}s`, 'blue');
           this.audio.play('small');
-          this.fx.boostBurst(P, 0xffa040);
+          this.fx.boostBurst(P, TECH_COLORS.blue);
           break;
         case 'landBoost':
           st.small++;
-          this.hud.message('落地喷!', '#ff9a1f');
+          H.message('落地喷!', TECH_CSS.blue);
+          H.combo('落地喷', 'blue', true);
           this.audio.play('small');
-          this.fx.boostBurst(P, 0xffa040);
+          this.fx.boostBurst(P, TECH_COLORS.blue);
+          break;
+        case 'missSmall':
+          H.combo(e.data.kind === 'land' ? '落地喷 ✕' : '小喷 ✕', 'miss');
           break;
         case 'double':
           st.double++;
-          setTimeout(() => this.hud.message('双喷!!', '#ff5fa8'), 120);
+          H.message('双喷!!', TECH_CSS.gold);
+          H.combo('双喷', 'gold');
           this.audio.play('double');
+          this.fx.boostBurst(P, TECH_COLORS.gold);
+          break;
+        case 'missDouble':
+          H.combo('双喷 ✕', 'miss');
+          break;
+        case 'chain':
+          st.chain++;
+          setTimeout(() => H.message('接氮气!!', TECH_CSS.purple), 120);
+          H.combo('接氮气', 'purple');
+          this.audio.play('chain');
+          this.fx.boostBurst(P, TECH_COLORS.purple);
           break;
         case 'nitro':
           st.nitro++;
-          this.hud.message('氮气加速!', '#27c7ff');
+          if (!e.data.chain) H.message('氮气加速!', '#27c7ff');
           this.audio.play('nitro');
           this.fx.boostBurst(P, 0x39a8ff);
           this.shake = Math.max(this.shake, 0.25);
           break;
         case 'gaugeFull':
-          this.hud.message('集气完成 +1 N₂O', '#7af0ff', true);
+          H.message('集气完成 +1 N₂O', '#7af0ff', true);
           this.audio.play('gauge');
           break;
         case 'crash':
@@ -843,17 +938,29 @@ class Game {
           }
           break;
         case 'pad':
-          this.hud.message('加速带!', '#27c7ff', true);
+          H.message('加速带!', '#27c7ff', true);
           this.audio.play('pad');
           break;
       }
     }
     P.events.length = 0;
+    // 窗口打开时轻提示音
+    if (P.tech !== this.lastTech && (P.tech === 'blue' || P.tech === 'gold')) this.audio.play('cue', P.tech);
+    this.lastTech = P.tech;
+  }
+
+  // AI 的技巧只做视觉反馈（旁观时也能看出“刚才那下”）
+  handleAIEvents(r) {
+    if (!r.events.length) return;
+    const cam = this.camera.position;
+    if ((r.x - cam.x) ** 2 + (r.z - cam.z) ** 2 < 160 * 160)
+      for (const e of r.events) this.fx.boostBurst(r, TECH_COLORS[e === 'small' ? 'blue' : e === 'double' ? 'gold' : 'purple']);
+    r.events.length = 0;
   }
 
   updateRaceHUD(dt) {
     const P = this.player;
-    const laps = this.settings.laps;
+    const laps = this.laps;
     const standings = this.standings.map((r) => ({
       name: r.name,
       me: r.isPlayer,
@@ -875,6 +982,7 @@ class Game {
       nitroOn: P.nitroTime > 0,
       smallOn: P.smallBoost > 0 || P.startBoost > 0 || P.padTime > 0,
     });
+    this.hud.cue(P.finished ? '' : P.tech, P.techK, P.techPerfect);
     this.hud.drawSpeedo(P.speedKmh, P.nitroTime > 0);
     this.hud.drawMinimap(this.racers, P);
     let warn = null;
@@ -938,15 +1046,29 @@ class Game {
             const rate = (r.isPlayer ? 55 : 22) * dt;
             for (let k = 0; k < rate + (R() < rate % 1 ? 1 : 0); k++)
               fx.smoke.emit(wx + (R() - 0.5) * 0.6, r.y + 0.25, wz + (R() - 0.5) * 0.6, (R() - 0.5) * 2 - fxv * sp * 0.08, 0.8 + R() * 1.2, (R() - 0.5) * 2 - fzv * sp * 0.08, 0.8 + R() * 0.7, 1.3, 5 + R() * 2, 0.95, 0.95, 0.97, r.isPlayer ? 0.42 : 0.3, -0.6, 1.2);
-            if (r.isPlayer && R() < 0.5) {
-              const c = r.gauge >= 1 || r.nitroCount >= 2 ? [1, 0.85, 0.3] : [0.5, 0.85, 1];
+            // 轮下火花：漂移蓄够（出弯即可小喷）后变成浅蓝
+            if (R() < (r.isPlayer ? 0.6 : 0.3)) {
+              const c = r.tech === 'charge' ? TECH_RGB.charge : TECH_RGB.raw;
               fx.glow.emit(wx, r.y + 0.2, wz, (R() - 0.5) * 3, R() * 3, (R() - 0.5) * 3, 0.25, 0.5, 0.1, c[0], c[1], c[2], 1, 8, 1);
             }
           }
         } else fx.skids.cut(key);
       }
+      // 车尾技巧火花：蓝=可小喷 / 金=可双喷 / 紫=可接氮气，向后拖出一道彩色火花尾迹
+      const tc = r.tech && r.tech !== 'charge' ? TECH_RGB[r.tech] : null;
+      if (tc && !far) {
+        const rate = (r.isPlayer ? 150 : 70) * dt;
+        const n = Math.floor(rate) + (R() < rate % 1 ? 1 : 0);
+        for (let k = 0; k < n; k++) {
+          const ox = (R() < 0.5 ? -1 : 1) * (0.25 + R() * 0.65);
+          const ex = r.x + lx * ox - fxv * 2.5, ez = r.z + lz * ox - fzv * 2.5;
+          const back = 3 + R() * 7, spread = (R() - 0.5) * 6;
+          const g = r.tech === 'gold' ? 0.8 : 1;
+          fx.glow.emit(ex, r.y + 0.35 + R() * 0.3, ez, fxv * (sp * 0.6 - back) + lx * spread, 1.5 + R() * 4, fzv * (sp * 0.6 - back) + lz * spread, 0.3 + R() * 0.25, 0.3, 0.04, tc[0] * g, tc[1] * g, tc[2] * g, 1, 16, 1.5);
+        }
+      }
       const nitro = r.nitroTime > 0;
-      const small = r.isPlayer && (r.smallBoost > 0 || r.padTime > 0 || r.startBoost > 0);
+      const small = r.smallBoost > 0 || r.padTime > 0 || r.startBoost > 0;
       if ((nitro || small) && !far) {
         for (const sx of [-0.42, 0.42]) {
           const ex = r.x + lx * sx - fxv * 2.6, ez = r.z + lz * sx - fzv * 2.6;
@@ -980,20 +1102,31 @@ class Game {
     if (cam.userData.fixed) return;
     const st = this.state;
     let target = this.player;
+    const inGarage = st === 'menu' && this.garage.isOpen;
     if (st === 'menu') {
       this.demoT += dt;
-      if (this.demoT > 9) { this.demoT = 0; this.demoTarget = (this.demoTarget + 1) % this.racers.length; this.demoCut = true; }
+      if (inGarage) this.demoTarget = 0;
+      else if (this.demoT > 9) { this.demoT = 0; this.demoTarget = (this.demoTarget + 1) % this.racers.length; this.demoCut = true; }
       target = this.racers[this.demoTarget];
     }
     if (!target) return;
     const tx = target.x, ty = target.y, tz = target.z;
     if (st === 'menu' || (st === 'finish' && this.resultShown)) {
       const a = this.time * 0.25 + this.demoTarget;
-      const want = new THREE.Vector3(tx + Math.sin(a) * 11, ty + 3.2 + Math.sin(this.time * 0.4) * 1.2, tz + Math.cos(a) * 11);
+      const rad = inGarage ? 8 : 11;
+      const want = new THREE.Vector3(tx + Math.sin(a) * rad, ty + (inGarage ? 2.4 : 3.2) + Math.sin(this.time * 0.4) * 1.2, tz + Math.cos(a) * rad);
       if (this.demoCut) { this.camPos.copy(want); this.demoCut = false; }
       this.camPos.lerp(want, 1 - Math.exp(-3 * dt));
       this.camLook.set(tx, ty + 1, tz);
       cam.position.copy(this.camPos);
+      // 车库：视线右移，让车出现在屏幕左半边（右边是车库面板）
+      this.garageFocus = damp(this.garageFocus || 0, inGarage && cam.aspect > 1.2 ? 1 : 0, 4, dt);
+      if (this.garageFocus > 0.001) {
+        const f = this.camLook.clone().sub(this.camPos);
+        const dist = f.length();
+        const right = f.normalize().cross(cam.up).normalize();
+        this.camLook.addScaledVector(right, dist * Math.tan((cam.fov * Math.PI) / 360) * cam.aspect * 0.42 * this.garageFocus);
+      }
       cam.lookAt(this.camLook);
       cam.fov = damp(cam.fov, 55, 3, dt);
       cam.updateProjectionMatrix();

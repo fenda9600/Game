@@ -1,15 +1,47 @@
 import * as THREE from 'three';
 import { softDotTexture, textTexture } from './textures.js';
 
+// 技巧提示颜色：蓝=可小喷，金=可双喷，紫=可接氮气（charge = 漂移已蓄够、出弯即可小喷）
+export const TECH_COLORS = { charge: 0x8fd8ff, blue: 0x2f9dff, gold: 0xffc21a, purple: 0xb04dff };
+const CUES = ['blue', 'gold', 'purple'];
+// 金色亮度高，泛光后会把整车糊掉，单独压低
+const CUE_GAIN = { blue: 1, gold: 0.55, purple: 1, charge: 1 };
+let flareMats = null;
+function flareMat(tech) {
+  flareMats ||= Object.fromEntries(CUES.map((k) => [k, new THREE.SpriteMaterial({
+    map: softDotTexture(), color: new THREE.Color(TECH_COLORS[k]).multiplyScalar(CUE_GAIN[k] * 2),
+    blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false,
+  })]));
+  return flareMats[tech];
+}
+
+// 车尾光斑脉动 + 底盘光改成提示色，远处的旁观者也能一眼看出窗口
+export function updateTechFx(u, tech, k = 0) {
+  const cue = CUES.includes(tech);
+  u.flare.visible = cue;
+  if (cue) {
+    u.flare.material = flareMat(tech);
+    const s = 1.6 + Math.sin(performance.now() * 0.028) * 0.3 + (1 - k) * 0.3;
+    u.flare.scale.set(s * 1.5, s, 1);
+  }
+  if (u.techNow !== tech) {
+    u.techNow = tech;
+    u.glowMat.color.setHex(cue ? TECH_COLORS[tech] : u.skin.glow);
+    if (cue) u.glowMat.color.multiplyScalar(CUE_GAIN[tech] * 0.9);
+    u.under.scale.setScalar(cue ? 1.15 : 1);
+  }
+}
+
+// bodyType：sport 跑车 / gt 宽体大尾翼 / hyper 超跑（鲨鱼鳍、双层尾翼、鸭翼）
 export const CAR_SKINS = [
-  { id: 'red', name: '烈焰战神', body: 0xe0262b, accent: 0xffc93a, glow: 0xff5a1f, rim: 0xd9d9d9 },
-  { id: 'blue', name: '冰蓝幻影', body: 0x1f6ff2, accent: 0x6ff3ff, glow: 0x27c7ff, rim: 0xe6f2ff },
-  { id: 'purple', name: '紫电魅影', body: 0x7b3df0, accent: 0xff6fd8, glow: 0xc26bff, rim: 0xf0e0ff },
-  { id: 'yellow', name: '黄金闪电', body: 0xffc21a, accent: 0x1b1b1b, glow: 0xffe066, rim: 0x2b2b2b },
-  { id: 'white', name: '白鲸号', body: 0xf3f5f8, accent: 0x2a7bff, glow: 0x5ab0ff, rim: 0x9aa7b8 },
-  { id: 'pink', name: '粉红甜心', body: 0xff7eb6, accent: 0xffffff, glow: 0xff9ed0, rim: 0xffffff },
-  { id: 'green', name: '翡翠之星', body: 0x19b86a, accent: 0xe8ff5a, glow: 0x6dff9e, rim: 0xe8ffe8 },
-  { id: 'black', name: '暗夜猎手', body: 0x1b1d22, accent: 0xff2d55, glow: 0xff2d55, rim: 0x707782 },
+  { id: 'red', name: '烈焰战神', body: 0xe0262b, accent: 0xffc93a, glow: 0xff5a1f, rim: 0xd9d9d9, bodyType: 'sport' },
+  { id: 'blue', name: '冰蓝幻影', body: 0x1f6ff2, accent: 0x6ff3ff, glow: 0x27c7ff, rim: 0xe6f2ff, bodyType: 'sport' },
+  { id: 'purple', name: '紫电魅影', body: 0x7b3df0, accent: 0xff6fd8, glow: 0xc26bff, rim: 0xf0e0ff, bodyType: 'hyper' },
+  { id: 'yellow', name: '黄金闪电', body: 0xffc21a, accent: 0x1b1b1b, glow: 0xffe066, rim: 0x2b2b2b, bodyType: 'hyper' },
+  { id: 'white', name: '白鲸号', body: 0xf3f5f8, accent: 0x2a7bff, glow: 0x5ab0ff, rim: 0x9aa7b8, bodyType: 'gt' },
+  { id: 'pink', name: '粉红甜心', body: 0xff7eb6, accent: 0xffffff, glow: 0xff9ed0, rim: 0xffffff, bodyType: 'sport' },
+  { id: 'green', name: '翡翠之星', body: 0x19b86a, accent: 0xe8ff5a, glow: 0x6dff9e, rim: 0xe8ffe8, bodyType: 'gt' },
+  { id: 'black', name: '暗夜猎手', body: 0x1b1d22, accent: 0xff2d55, glow: 0xff2d55, rim: 0x707782, bodyType: 'hyper' },
 ];
 
 function profileShape(pts) {
@@ -114,15 +146,45 @@ export function buildCar(skin, { name = null, isPlayer = false } = {}) {
   wing.rotation.x = -0.12;
   wing.castShadow = true;
   root.add(wing);
+  const posts = [];
   for (const sx of [-0.62, 0.62]) {
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.42, 0.18), dark);
     post.position.set(sx, 1.12, -1.95);
     root.add(post);
+    posts.push(post);
   }
   for (const sx of [-1.06, 1.06]) {
     const plate = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.28, 0.6), paint);
     plate.position.set(sx, 1.32, -1.97);
     root.add(plate);
+  }
+
+  // 车型差异（车库里买到的新车一眼能认出来）
+  const add = (geo, m, x, y, z, rz = 0) => {
+    const o = new THREE.Mesh(geo, m);
+    o.position.set(x, y, z);
+    o.rotation.z = rz;
+    o.castShadow = true;
+    root.add(o);
+    return o;
+  };
+  if (skin.bodyType === 'gt') {
+    // 天鹅颈大尾翼 + 引擎盖进气口 + 侧面散热口
+    wing.scale.set(1.12, 1.2, 1.25);
+    wing.position.set(0, 1.58, -2.02);
+    for (const p of posts) { p.scale.y = 2.1; p.position.y = 1.2; }
+    add(new THREE.BoxGeometry(0.72, 0.14, 0.95), dark, 0, 0.9, 0.95);
+    for (const sx of [-1.045, 1.045]) for (const dz of [0, 0.22]) add(new THREE.BoxGeometry(0.03, 0.2, 0.12), dark, sx, 0.62, 0.55 + dz);
+    add(new THREE.BoxGeometry(2.04, 0.08, 0.34), accent, 0, 0.28, 2.28);
+  } else if (skin.bodyType === 'hyper') {
+    // 鲨鱼鳍 + 双层尾翼 + 前鸭翼 + 前铲
+    wing.position.y = 1.44;
+    for (const p of posts) { p.scale.y = 1.4; p.position.y = 1.16; }
+    add(new THREE.BoxGeometry(2.0, 0.05, 0.28), accent, 0, 1.2, -2.12);
+    const fin = add(new THREE.BoxGeometry(0.05, 0.34, 1.5), paint, 0, 1.18, -1.25);
+    fin.rotation.x = -0.12;
+    for (const sx of [-1, 1]) add(new THREE.BoxGeometry(0.36, 0.03, 0.22), accent, sx * 0.94, 0.5, 2.16, sx * 0.3);
+    add(new THREE.BoxGeometry(1.96, 0.05, 0.36), dark, 0, 0.24, 2.3);
   }
 
   // 车灯
@@ -217,6 +279,13 @@ export function buildCar(skin, { name = null, isPlayer = false } = {}) {
     flames.push(fg);
   }
 
+  // 技巧提示光斑（车尾）
+  const flare = new THREE.Sprite(flareMat('blue'));
+  flare.position.set(0, 0.72, -2.75);
+  flare.visible = false;
+  flare.renderOrder = 4;
+  root.add(flare);
+
   // 名字标签
   let tag = null;
   if (name) {
@@ -237,6 +306,6 @@ export function buildCar(skin, { name = null, isPlayer = false } = {}) {
   shield.visible = false;
   car.add(shield);
 
-  car.userData = { root, wheels, flames, exhausts, flameMatOuter, under, glowMat, tag, shield, skin, isPlayer, tailM };
+  car.userData = { root, wheels, flames, exhausts, flameMatOuter, under, glowMat, tag, shield, skin, isPlayer, tailM, flare };
   return car;
 }

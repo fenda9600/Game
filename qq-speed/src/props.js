@@ -484,7 +484,7 @@ function addBuilding(b, x, y, z, w, h, d, rot, kind, roofColor = 0x8f96a3) {
 
 // ---------- 各地图 ----------
 export function buildProps(mapId, ctx) {
-  const fn = { city: cityProps, aegean: aegeanProps, egypt: egyptProps, snow: snowProps }[mapId];
+  const fn = { city: cityProps, aegean: aegeanProps, egypt: egyptProps, snow: snowProps, highway: highwayProps }[mapId];
   return fn(ctx);
 }
 
@@ -522,9 +522,10 @@ function commonTrackside(ctx, opts) {
     const tex = TX.chevronTexture(opts.chevronBg, opts.chevronFg);
     const mL = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.25, side: THREE.DoubleSide });
     let last = -100;
+    const minCurv = opts.chevronCurv || 0.02;
     for (let i = 0; i < track.N; i += 3) {
       const c = track.curv[i];
-      if (Math.abs(c) < 0.02 || i - last < 9) continue;
+      if (Math.abs(c) < minCurv || i - last < 9) continue;
       last = i;
       const side = c > 0 ? 1 : -1; // 左弯外侧在右
       const s = track.sample(i * track.ds, {});
@@ -1265,6 +1266,166 @@ function snowProps(ctx) {
     });
   }
   return buildStartGate(parent, track, { pillar: 0xf4f8ff, beam: 0x1e4fb0, text: 'START · SNOW', bannerBg: '#c62828', band: 0x39c5ff, metal: 0.2 });
+}
+
+// ======================= 落日高速 =======================
+// 高速龙门架：钢架横跨路面，指示牌朝向驶来的车手
+function addGantry(parent, track, d, signs) {
+  const s = track.sample(d, {});
+  const hw = track.halfW;
+  const grp = new THREE.Group();
+  const steel = std(0x9aa3ad, { metalness: 0.7, roughness: 0.35 });
+  const H = 8.8;
+  for (const side of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.8, H + 1.2, 0.8), steel);
+    post.position.set(side * (hw + 0.3), (H + 1.2) / 2 - 0.4, 0);
+    grp.add(post);
+  }
+  for (const [y, t] of [[H, 0.8], [H - 1.6, 0.45]]) {
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(hw * 2 + 1.4, t, t), steel);
+    beam.position.y = y;
+    grp.add(beam);
+  }
+  const w = 10.5, h = w * 0.375;
+  signs.forEach(([title, sub, bg], k) => {
+    const x = (k - (signs.length - 1) / 2) * (w + 1.2);
+    const tex = TX.signTexture(title, sub, bg);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.4, roughness: 0.5 }));
+    sign.position.set(x, H - 0.6, -0.62);
+    sign.rotation.y = Math.PI;
+    grp.add(sign);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(w + 0.3, h + 0.3, 0.2), std(0x5d6470, { metalness: 0.5 }));
+    back.position.set(x, H - 0.6, -0.45);
+    grp.add(back);
+  });
+  grp.position.set(s.x, s.y, s.z);
+  grp.rotation.y = s.hd;
+  grp.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  parent.add(grp);
+}
+
+function highwayProps(ctx) {
+  const { track, batch, rnd, groundAt, parent, updaters } = ctx;
+  const hw = track.halfW;
+  const B = track.bounds;
+  // 天际线：内场 CBD 摩天楼 + 北侧城区
+  const kinds = ['glass', 'modern', 'glass', 'office'];
+  for (let x = B.minX - 460; x < B.maxX + 460; x += 38)
+    for (let z = B.minZ + 30; z < B.maxZ + 520; z += 38) {
+      const px = x + (rnd() - 0.5) * 12, pz = z + (rnd() - 0.5) * 12;
+      const inner = px > -190 && px < 272 && pz > 22 && pz < 415;
+      const north = pz > B.maxZ + 30;
+      if (!inner && !north && rnd() < 0.6) continue;
+      if (rnd() > (inner ? 0.62 : 0.5)) continue;
+      const w = 12 + rnd() * 14, d = 12 + rnd() * 14;
+      if (!isFree(track, px, pz, Math.max(w, d) * 0.75 + 12)) continue;
+      const gy = groundAt(px, pz);
+      if (gy < 0) continue;
+      const cd = Math.hypot(px - 40, pz - 220);
+      const h = inner ? 28 + rnd() * 40 + Math.max(0, 170 - cd) * 0.6 : 16 + rnd() * 42;
+      const kind = kinds[Math.floor(rnd() * kinds.length)];
+      addBuilding(batch, px, gy, pz, w, h, d, rnd() < 0.75 ? 0 : rnd() * 0.5, kind, kind === 'glass' ? 0x6a6f9a : 0x9a9aa6);
+      if (h > 80 && rnd() < 0.6) {
+        const ant = geo('antenna', () => { const g = new THREE.CylinderGeometry(0.2, 0.4, 14, 5); g.translate(0, 7, 0); return g; });
+        batch.add(ant, std(0xd0d4dc, { metalness: 0.7 }), M(px, gy + h + 0.8, pz));
+        batch.add(geo('beacon', () => new THREE.SphereGeometry(0.6, 8, 6)), glow(0xff3030, 4), M(px, gy + h + 15, pz), false);
+      }
+    }
+  // 滨海棕榈（南侧海岸）+ 其余路段行道树
+  alongTrack(track, 20, (s) => {
+    if (track.bridge[s.i] || track.inTunnel(s.d)) return;
+    for (const side of [-1, 1]) {
+      const lat = side * (hw + 8 + rnd() * 4);
+      const x = s.x + s.rx * lat, z = s.z + s.rz * lat;
+      if (!isFree(track, x, z, 6) || groundAt(x, z) < -0.3) continue;
+      if (s.z < 140) addPalm(batch, x, groundAt(x, z), z, 0.9 + rnd() * 0.4, rnd() * 6);
+      else if (rnd() < 0.5) addTree(batch, x, groundAt(x, z), z, 0.8 + rnd() * 0.4, rnd() * 6, 0x5f8f3a);
+    }
+  }, 7);
+  for (let i = 0; i < 90; i++) {
+    const x = B.minX - 300 + rnd() * (B.maxX - B.minX + 600);
+    const z = -30 - rnd() * 14;
+    if (!isFree(track, x, z, 5) || groundAt(x, z) < -0.3) continue;
+    addPalm(batch, x, groundAt(x, z), z, 0.8 + rnd() * 0.5, rnd() * 6);
+  }
+  commonTrackside(ctx, {
+    lamps: true, lampStep: 44,
+    chevrons: true, chevronBg: '#ff7a3d', chevronFg: '#ffffff', chevronCurv: 0.013,
+    billboards: [
+      TX.billboardTexture('SUNSET', '落日高速', '#ff5f3d', '#ffb13b'),
+      TX.billboardTexture('DRIFT', '高速漂移', '#7b3df0', '#ff6fd8'),
+      TX.billboardTexture('N2O', '氮气加速', '#1565c0', '#27c7ff'),
+    ],
+    bbStep: 210,
+  });
+  // 龙门架指示牌
+  addGantry(parent, track, track.dAt(-208, 160), [['连续弯道', 'S-BEND  ↰↱'], ['前方急弯', 'HAIRPIN 140°', '#c2410c']]);
+  addGantry(parent, track, track.dAt(-62, 435), [['落日隧道', 'TUNNEL  210 m'], ['极速高架', 'SUNSET HWY']]);
+  addGantry(parent, track, track.dAt(236, 435), [['苜蓿叶立交', 'CLOVERLEAF  ↻ 270°'], ['漂移区', 'DRIFT ZONE', '#c2410c']]);
+  addGantry(parent, track, track.dAt(292, 330), [['终点 500 m', 'FINISH', '#1e4fb0']]);
+  // 路面漂移区喷涂
+  const dz = new THREE.MeshStandardMaterial({
+    map: TX.driftZoneTexture(), transparent: true, depthWrite: false, roughness: 0.7,
+    polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+  });
+  for (const [x, z] of [[-249, 395], [318, 435], [-85, 0]]) parent.add(track.roadDecal(track.dAt(x, z), 0, 13, 26, dz));
+  addGrandstand(parent, batch, track.sample(track.length - 62, {}), -1, 60, hw, groundAt, 0xff7a3d, track);
+
+  // 远处跨海大桥
+  {
+    const z = -780, y = 28;
+    const red = std(0xc8452c, { roughness: 0.5, metalness: 0.2 });
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(2600, 3.2, 30), std(0x7d7f8c, { roughness: 0.6 }));
+    deck.position.set(B.cx, y, z);
+    parent.add(deck);
+    const towers = [B.cx - 430, B.cx + 470];
+    for (const tx of towers) {
+      for (const sz of [-13, 13]) {
+        const t = new THREE.Mesh(new THREE.BoxGeometry(7, 150, 7), red);
+        t.position.set(tx, 45, z + sz);
+        parent.add(t);
+      }
+      for (const hy of [y + 30, y + 75, y + 112]) {
+        const cb = new THREE.Mesh(new THREE.BoxGeometry(6, 5, 30), red);
+        cb.position.set(tx, hy, z);
+        parent.add(cb);
+      }
+    }
+    for (const sz of [-13, 13]) {
+      const pts = [];
+      const ends = [B.cx - 1100, towers[0], towers[1], B.cx + 1140];
+      for (let k = 0; k < 3; k++) {
+        const a = ends[k], b = ends[k + 1];
+        for (let q = k ? 1 : 0; q <= 12; q++) {
+          const t = q / 12;
+          const top = [y + 2, y + 118, y + 118, y + 2];
+          const sag = k === 1 ? Math.sin(t * Math.PI) * 88 : Math.sin(t * Math.PI) * 18;
+          pts.push(new THREE.Vector3(a + (b - a) * t, top[k] + (top[k + 1] - top[k]) * t - sag, z + sz));
+        }
+      }
+      const cable = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 90, 0.9, 5), red);
+      parent.add(cable);
+    }
+  }
+  // 海湾帆船
+  const boats = [];
+  for (let i = 0; i < 12; i++) {
+    const bt = buildSailboat(i % 3 ? 0xffffff : 0xffb13b);
+    bt.position.set(B.minX - 400 + rnd() * (B.maxX - B.minX + 800), -2.3, -160 - rnd() * 520);
+    bt.rotation.y = rnd() * 6;
+    bt.scale.setScalar(1.4);
+    bt.userData.p = rnd() * 6;
+    parent.add(bt);
+    boats.push(bt);
+  }
+  const blimp = buildBlimp();
+  parent.add(blimp);
+  updaters.push((dt, t) => {
+    for (const b of boats) { b.position.y = -2.3 + Math.sin(t + b.userData.p) * 0.25; b.rotation.z = Math.sin(t * 0.8 + b.userData.p) * 0.06; }
+    blimp.position.set(B.cx + Math.cos(t * 0.025) * 420, 120, B.cz + Math.sin(t * 0.025) * 420);
+    blimp.rotation.y = -t * 0.025;
+  });
+  return buildStartGate(parent, track, { pillar: 0x2b2f3a, beam: 0xff7a3d, text: 'START · SUNSET HWY', bannerBg: '#ff5f3d', band: 0xffd23a, metal: 0.5 });
 }
 
 export { clamp };

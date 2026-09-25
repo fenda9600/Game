@@ -1,4 +1,5 @@
 import { clamp, wrapAngle, damp } from './util.js';
+import { updateTechFx } from './carModel.js';
 
 // 手感参数（米/秒）。显示时速 = 速度 × 3.6
 export const TUNE = {
@@ -18,18 +19,26 @@ export const TUNE = {
   driftGripRelease: 5.2,
   maxDriftAngle: 1.15,
   smallWindow: 0.5,
+  perfectWindow: 0.2,
+  doubleOpen: 0.28, // 第一喷开始后多久进入双喷窗口（火焰将尽时）
+  doubleWindow: 0.42,
   gaugeRate: 0.36,
   nitroTime: 2.8,
   gravity: 30,
 };
 
+// 车辆性能修正（赛车基础属性 + 改装），默认值即原版手感
+export const BASE_PERF = { vmax: 1, accel: 1, turn: 1, grip: 1, drift: 1, gauge: 1, nitroTime: 0, nitroSpeed: 0, spray: 0 };
+
 export class PlayerCar {
-  constructor(track, model, name) {
+  constructor(track, model, name, perf = BASE_PERF) {
     this.track = track;
     this.model = model;
     this.name = name;
+    this.perf = { ...BASE_PERF, ...perf };
     this.isPlayer = true;
     this.events = [];
+    this.items = [];
     this.proj = {};
     this.reset(0, 0);
   }
@@ -58,6 +67,10 @@ export class PlayerCar {
     this.smallBoostPower = 0;
     this.smallWindow = 0;
     this.windowKind = '';
+    this.sprayT = -1; // 本轮喷射计时（-1 = 未在喷射链中）
+    this.sprayCount = 0;
+    this.tech = '';
+    this.techK = 0;
     this.padTime = 0;
     this.startBoost = 0;
     this.spin = 0;
@@ -82,18 +95,26 @@ export class PlayerCar {
   get speedKmh() { return Math.abs(this.s) * 3.6; }
   get boosting() { return this.nitroTime > 0 || this.smallBoost > 0 || this.padTime > 0 || this.startBoost > 0; }
 
+  // 喷射火焰未尽时放氮气 = 接氮气（额外时长）
+  get canChain() { return this.sprayT >= 0 && this.smallBoost > 0.05; }
+
   triggerNitro(fromItem = false) {
     if (!fromItem) {
       if (this.nitroCount <= 0) return false;
       this.nitroCount--;
     }
-    const wasSmall = this.smallBoost > 0.35;
-    this.nitroTime = Math.min(4.5, Math.max(0, this.nitroTime) + TUNE.nitroTime);
-    this.s = Math.max(this.s, 20) + 4;
-    this.emit('nitro', { double: wasSmall });
-    if (wasSmall) this.emit('double', {});
+    const chain = this.canChain;
+    this.nitroTime = Math.min(5, Math.max(0, this.nitroTime) + TUNE.nitroTime + this.perf.nitroTime + (chain ? 0.5 : 0));
+    this.s = Math.max(this.s, 20) + (chain ? 6 : 4);
+    this.emit('nitro', { chain });
+    if (chain) {
+      this.emit('chain', {});
+      this.sprayT = -1;
+    }
     return true;
   }
+
+  get nitroReady() { return this.itemModeNow ? this.items[0] === 'nitro' : this.nitroCount > 0; }
 
   endDrift(clean = true) {
     if (!this.drifting) return;
@@ -102,12 +123,14 @@ export class PlayerCar {
       this.smallWindow = TUNE.smallWindow;
       this.windowKind = 'drift';
     }
-    this.emit('driftEnd', { time: this.driftTime });
+    this.emit('driftEnd', { time: this.driftTime, clean: this.smallWindow > 0 });
   }
 
   update(dt, inp, active, itemMode) {
     const T = TUNE;
+    const P = this.perf;
     const tr = this.track;
+    this.itemModeNow = itemMode;
     if (!active) inp = NO_INPUT;
     const spinning = this.spin > 0;
     if (spinning) {
@@ -120,32 +143,48 @@ export class PlayerCar {
     this.steer = damp(this.steer, steerT, 12, dt);
 
     // 各种加速状态
-    let vmax = T.vmax, acc = T.accel;
-    if (this.nitroTime > 0) { vmax = T.vmaxNitro; acc = T.nitroAccel; this.nitroTime -= dt; }
+    let vmax = T.vmax * P.vmax, acc = T.accel * P.accel;
+    if (this.nitroTime > 0) { vmax = T.vmaxNitro * P.vmax + P.nitroSpeed; acc = T.nitroAccel * P.accel; this.nitroTime -= dt; }
     if (this.smallBoost > 0) { vmax += this.smallBoostPower; acc += 14; this.smallBoost -= dt; }
     if (this.padTime > 0) { vmax += 12; acc += 20; this.padTime -= dt; }
     if (this.startBoost > 0) { vmax += 10; acc += 26; this.startBoost -= dt; }
     if (this.magnet > 0) { vmax += 10; acc += 12; this.magnet -= dt; }
-    vmax = Math.min(vmax, 86);
+    vmax = Math.min(vmax, 86 * P.vmax);
     if (this.slowTime > 0) { vmax *= 0.55; this.slowTime -= dt; }
     if (this.shield > 0) this.shield -= dt;
     this.vmaxNow = vmax;
 
-    // 小喷 / 落地喷窗口
+    const tap = inp.upPressed || inp.wPressed;
+    // 蓝：小喷 / 落地喷窗口（出弯车身回正瞬间点 ↑）
     if (this.smallWindow > 0) {
       this.smallWindow -= dt;
-      if (inp.upPressed || inp.wPressed) {
+      if (tap) {
         const elapsed = (this.windowKind === 'drift' ? T.smallWindow : 0.45) - this.smallWindow;
-        const perfect = elapsed < 0.2;
-        const dbl = this.nitroTime > 0;
+        const perfect = elapsed < T.perfectWindow;
+        const chain = this.nitroTime > 0; // 氮气燃烧中小喷 = 接力
         this.smallBoost = perfect ? 1.0 : 0.75;
-        this.smallBoostPower = (perfect ? 11 : 8) + (dbl ? 5 : 0);
+        this.smallBoostPower = (perfect ? 11 : 8) + P.spray + (chain ? 5 : 0);
         this.s += perfect ? 5.5 : 4;
-        if (dbl) this.nitroTime += 0.3;
-        this.emit(this.windowKind === 'land' ? 'landBoost' : 'smallBoost', { perfect, double: dbl });
-        if (dbl) this.emit('double', {});
+        if (chain) this.nitroTime += 0.3;
+        this.emit(this.windowKind === 'land' ? 'landBoost' : 'smallBoost', { perfect, chain, t: elapsed });
+        if (chain) this.emit('chain', {});
         this.smallWindow = 0;
-      }
+        this.sprayT = 0;
+        this.sprayCount = 1;
+      } else if (this.smallWindow <= 0) this.emit('missSmall', { kind: this.windowKind });
+    }
+    // 金：双喷窗口（第一喷火焰将尽时再点一次 ↑）
+    if (this.sprayT >= 0) {
+      const inGold = this.sprayCount === 1 && this.sprayT >= T.doubleOpen && this.sprayT <= T.doubleOpen + T.doubleWindow;
+      if (inGold && tap) {
+        this.sprayCount = 2;
+        this.smallBoost = Math.max(0, this.smallBoost) + 0.85;
+        this.smallBoostPower = Math.max(this.smallBoostPower, 12 + P.spray) + 1;
+        this.s += 4;
+        this.emit('double', { t: this.sprayT - T.doubleOpen });
+      } else if (inGold && this.sprayT + dt > T.doubleOpen + T.doubleWindow) this.emit('missDouble', {});
+      this.sprayT += dt;
+      if (this.sprayT > T.doubleOpen + T.doubleWindow && this.smallBoost <= 0) this.sprayT = -1;
     }
     if (inp.nitroPressed && !itemMode) this.triggerNitro();
 
@@ -184,9 +223,9 @@ export class PlayerCar {
       const held = inp.shift;
       if (held) this.releaseTime = 0;
       else this.releaseTime += dt;
-      const yaw = held ? T.driftYaw + T.driftYawAlign * align : (0.45 + 0.9 * align) * Math.exp(-2.2 * this.releaseTime);
+      const yaw = (held ? T.driftYaw + T.driftYawAlign * align : (0.45 + 0.9 * align) * Math.exp(-2.2 * this.releaseTime)) * P.drift;
       this.h += this.driftDir * yaw * clamp(this.s / 26, 0.35, 1) * dt * (onGround ? 1 : 0.4);
-      const k = held ? T.driftGrip : T.driftGripRelease;
+      const k = held ? T.driftGrip : T.driftGripRelease * P.grip;
       this.m += wrapAngle(this.h - this.m) * (1 - Math.exp(-k * dt));
       let a = wrapAngle(this.h - this.m);
       if (Math.abs(a) > T.maxDriftAngle) {
@@ -195,9 +234,9 @@ export class PlayerCar {
       }
       this.driftAngle = a;
       const sa = Math.abs(Math.sin(a));
-      if (onGround) this.s -= (2.5 + 11 * sa) * dt;
+      if (onGround) this.s -= ((2.5 + 11 * sa) * dt) / P.drift;
       if (!itemMode && onGround) {
-        this.gauge += dt * T.gaugeRate * (0.3 + sa * 1.7) * clamp(this.s / 35, 0.3, 1.1);
+        this.gauge += dt * T.gaugeRate * P.gauge * (0.3 + sa * 1.7) * clamp(this.s / 35, 0.3, 1.1);
         while (this.gauge >= 1) {
           if (this.nitroCount < 2) {
             this.nitroCount++;
@@ -215,9 +254,9 @@ export class PlayerCar {
       this.driftAngle = damp(this.driftAngle, 0, 10, dt);
       const dir = this.s >= 0 ? 1 : -1;
       const sp = Math.abs(this.s);
-      const turn = T.turnRate * clamp(sp / 9, 0, 1) * (1 - 0.55 * clamp(sp / T.vmax, 0, 1.3));
+      const turn = T.turnRate * P.turn * clamp(sp / 9, 0, 1) * (1 - 0.55 * clamp(sp / T.vmax, 0, 1.3));
       this.h += this.steer * turn * dt * dir * (onGround ? 1 : 0.35);
-      if (this.s >= 0) this.m += wrapAngle(this.h - this.m) * (1 - Math.exp(-T.grip * dt));
+      if (this.s >= 0) this.m += wrapAngle(this.h - this.m) * (1 - Math.exp(-T.grip * P.grip * dt));
       else this.m = this.h;
     }
     if (spinning) this.h += 9 * dt;
@@ -320,6 +359,30 @@ export class PlayerCar {
           this.padTime = 1.1;
         }
       }
+    this.updateTech();
+  }
+
+  // 当前可见的技巧提示（供车尾火花 / HUD 使用）
+  updateTech() {
+    const T = TUNE;
+    let tech = '', k = 0;
+    if (this.smallWindow > 0) {
+      const total = this.windowKind === 'drift' ? T.smallWindow : 0.45;
+      tech = 'blue';
+      k = this.smallWindow / total;
+      this.techPerfect = total - this.smallWindow < T.perfectWindow;
+    } else if (this.sprayT >= 0) {
+      const e = this.sprayT - T.doubleOpen;
+      if (this.sprayCount === 1 && e >= 0 && e <= T.doubleWindow) {
+        tech = 'gold';
+        k = 1 - e / T.doubleWindow;
+      } else if (e > 0 && this.smallBoost > 0.05 && this.nitroTime <= 0 && this.nitroReady) {
+        tech = 'purple';
+        k = clamp(this.smallBoost / 1.2, 0, 1);
+      }
+    } else if (this.drifting && this.driftTime > 0.22 && !this.airborne) tech = 'charge';
+    this.tech = tech;
+    this.techK = k;
   }
 
   // 同步 3D 模型
@@ -347,6 +410,7 @@ export class PlayerCar {
       if (w.front) w.steer.rotation.y = this.drifting ? -this.driftDir * 0.3 : this.steer * 0.38;
     }
     updateFlames(u, this.nitroTime > 0, this.smallBoost > 0 || this.padTime > 0 || this.startBoost > 0);
+    updateTechFx(u, this.tech, this.techK);
     u.shield.visible = this.shield > 0;
   }
 }

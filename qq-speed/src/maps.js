@@ -1,6 +1,7 @@
-// 四张地图的主题配置。视觉元素参考 QQ飞车官方地图原画：
+// 五张地图的主题配置。视觉元素参考 QQ飞车官方地图原画：
 // 11城（塔桥、SPEED 飞艇、吉祥物气球、蓝色加速箭头）、情迷爱琴海（白墙蓝顶、石板路、三角梅）、
-// 法老金字塔（紫白格起点、有翼狮身像、太阳圆盘门楼）、雪地大冒险（雪松、奖杯、热气球、看台横幅）
+// 法老金字塔（紫白格起点、有翼狮身像、太阳圆盘门楼）、雪地大冒险（雪松、奖杯、热气球、看台横幅）、
+// 落日高速（原创：黄昏滨海高速、龙门架指示牌、苜蓿叶立交、漂移区路面喷涂）
 export const MAPS = [
   {
     id: 'city',
@@ -92,6 +93,32 @@ export const MAPS = [
     isBridge: (x, z, y) => y > 5.5,
     snowfall: true,
     bgm: 3,
+  },
+  {
+    id: 'highway',
+    name: '落日高速',
+    en: 'SUNSET HIGHWAY',
+    tag: '高速漂移 · 苜蓿叶立交 · 5 圈',
+    desc: '黄昏的滨海高速：30 米宽四车道、大半径高速弯与 270° 苜蓿叶匝道，一口气漂到底。',
+    layout: 'highway',
+    laps: 5, // 本图固定 5 圈
+    isNew: true,
+    sky: { top: '#3a3f8f', horizon: '#ffb27a', bottom: '#8a5a78', sun: [0.32, 0.2, -0.92], sunColor: '#ffc27a', sunI: 2.3 },
+    hemi: ['#ffd6b8', '#5d4f7a', 1.05],
+    fog: ['#f0a88a', 420, 2500],
+    ground: 'grass',
+    groundTint: '#ffffff',
+    water: { color: '#e0875a', deep: '#3a2f6b', y: -2.4 },
+    track: {
+      road: 'highway', wall: 'highway', curbA: '#ff7a3d', curbB: '#ffffff', deckColor: 0xbdb6ac,
+      checkerA: '#101010', checkerB: '#ffffff', boostColor: '#ff5fa8',
+      boostPads: [{ at: [-45, 0], lat: -6 }, { at: [-45, 0], lat: 6 }, { at: [70, 435] }, { at: [292, 340] }],
+      tunnels: [{ from: [-20, 435], to: [190, 435] }],
+      shoulder: { width: 4, tex: 'gravel' },
+      tunnelOuter: 0x9a938a,
+    },
+    isBridge: (x, z, y) => y > 3.5,
+    bgm: 4,
   },
 ];
 

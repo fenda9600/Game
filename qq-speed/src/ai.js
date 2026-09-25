@@ -1,5 +1,6 @@
 import { clamp, damp, wrapAngle } from './util.js';
 import { updateFlames, TUNE } from './vehicle.js';
+import { updateTechFx } from './carModel.js';
 
 export const AI_NAMES = ['小橘子', '秋名山车神', '漂移少女', '氮气小王子', '风之子', '夜の车神', '闪电旋风', '小飞侠'];
 
@@ -38,6 +39,13 @@ export class AICar {
     this.h = 0;
     this.x = 0;
     this.z = 0;
+    this.smallBoost = 0;
+    this.driftT = 0;
+    this.stage = '';
+    this.stageT = 0;
+    this.tech = '';
+    this.techK = 0;
+    this.events = [];
     this.startDelay = 0.05 + this.rnd() * 0.25;
     this.itemTimer = 2 + this.rnd() * 3;
     const s = this.track.sample(d, this.s2);
@@ -55,6 +63,7 @@ export class AICar {
     if (this.magnet > 0) { vmaxBase += 10; this.magnet -= dt; }
     if (this.slowTime > 0) { vmaxBase *= 0.55; this.slowTime -= dt; }
     if (this.shield > 0) this.shield -= dt;
+    if (this.smallBoost > 0) { vmaxBase += 4; this.smallBoost -= dt; }
     const d = this.dist;
     const cNow = tr.curvAhead(d, 8);
     const look = 18 + this.s * 1.25;
@@ -62,7 +71,7 @@ export class AICar {
     // 过弯极限（含漂移），技术越好越敢压速
     const A = 16 + 30 * this.skill;
     const vCorner = Math.sqrt(A / Math.max(Math.abs(cAhead), 1e-4));
-    let vt = Math.min(vmaxBase, vCorner + (this.nitroTime > 0 ? 6 : 0));
+    let vt = Math.min(vmaxBase, vCorner + (this.nitroTime > 0 ? 6 : 0) + (this.smallBoost > 0 ? 4 : 0));
     let spinning = false;
     if (this.spin > 0) { this.spin -= dt; vt = 5; spinning = true; }
     if (!active || raceTime < this.startDelay) vt = 0;
@@ -106,8 +115,11 @@ export class AICar {
     } else this.y = gy;
 
     // 视觉漂移：弯中甩尾
-    const wantDrift = Math.abs(cNow) > 0.012 && this.s > 26;
+    const wantDrift = Math.abs(cNow) > 0.012 && this.s > 26 && !spinning;
+    if (this.drifting && !wantDrift && this.driftT > 0.35 && active) this.startCombo();
+    this.driftT = wantDrift ? this.driftT + dt : 0;
     this.drifting = wantDrift;
+    this.updateCombo(dt, active);
     this.driftDir = Math.sign(cNow);
     const yawT = wantDrift ? Math.sign(cNow) * Math.min(0.62, Math.abs(cNow) * 22) : 0;
     this.yawOff = damp(this.yawOff, yawT, 5, dt);
@@ -118,6 +130,60 @@ export class AICar {
     this.slope = tr.slope[s.i];
     this.bank = s.bank;
     this.trackHd = s.hd;
+  }
+
+  // 出弯技巧：按技术水平决定能否打出小喷 / 双喷 / 接氮气（和玩家同一套颜色提示）
+  startCombo() {
+    const k = this.skill, R = this.rnd;
+    this.plan = {
+      small: R() < clamp(0.3 + 0.5 * k, 0, 0.95),
+      rt: clamp(0.34 - 0.2 * k, 0.05, 0.3) + R() * 0.12,
+      dbl: R() < clamp(-0.15 + 0.6 * k, 0, 0.85),
+      dt2: TUNE.doubleOpen + 0.05 + R() * (TUNE.doubleWindow - 0.12),
+      chain: R() < clamp(0.1 + 0.45 * k, 0, 0.7),
+      ct: 0.05 + R() * 0.25,
+    };
+    this.stage = 'blue';
+    this.stageT = 0;
+  }
+
+  updateCombo(dt, active) {
+    const p = this.plan;
+    this.stageT += dt;
+    let tech = '', k = 0;
+    if (!active || this.spin > 0) this.stage = '';
+    if (this.stage === 'blue') {
+      tech = 'blue';
+      k = 1 - this.stageT / TUNE.smallWindow;
+      if (p.small && this.stageT >= p.rt) {
+        this.smallBoost = 0.85;
+        this.s += 3;
+        this.stage = 'spray';
+        this.stageT = 0;
+        this.events.push('small');
+      } else if (this.stageT > TUNE.smallWindow) this.stage = '';
+    } else if (this.stage === 'spray') {
+      const e = this.stageT - TUNE.doubleOpen;
+      if (e >= 0 && e <= TUNE.doubleWindow) { tech = 'gold'; k = 1 - e / TUNE.doubleWindow; }
+      if (p.dbl && this.stageT >= p.dt2) {
+        this.smallBoost += 0.8;
+        this.s += 2.5;
+        this.stage = 'spray2';
+        this.stageT = 0;
+        this.events.push('double');
+      } else if (e > TUNE.doubleWindow) { this.stage = 'spray2'; this.stageT = 0; }
+    } else if (this.stage === 'spray2') {
+      const ready = this.nitroTime <= 0 && this.nitroCd < 3;
+      if (ready && this.smallBoost > 0.05) { tech = 'purple'; k = clamp(this.smallBoost / 1.2, 0, 1); }
+      if (ready && p.chain && this.stageT >= p.ct && this.smallBoost > 0.05) {
+        this.nitroTime = 2.9;
+        this.nitroCd = (6 + this.rnd() * 8) / this.skill;
+        this.stage = '';
+        this.events.push('chain');
+      } else if (this.smallBoost <= 0) this.stage = '';
+    } else if (this.drifting && this.driftT > 0.35) tech = 'charge';
+    this.tech = tech;
+    this.techK = k;
   }
 
   syncModel(dt) {
@@ -132,7 +198,8 @@ export class AICar {
       w.spin.rotation.x += (this.s * dt) / 0.47;
       if (w.front) w.steer.rotation.y = this.drifting ? -this.driftDir * 0.3 : clamp(wrapAngle(this.yawOff) * 2, -0.4, 0.4);
     }
-    updateFlames(u, this.nitroTime > 0, false);
+    updateFlames(u, this.nitroTime > 0, this.smallBoost > 0);
+    updateTechFx(u, this.tech, this.techK);
     u.shield.visible = this.shield > 0;
   }
 }

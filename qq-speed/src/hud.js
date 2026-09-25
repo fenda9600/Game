@@ -39,6 +39,13 @@ export class HUD {
     this.spx = this.sp.getContext('2d');
     this.fx = $('fx');
     this.fxx = this.fx.getContext('2d');
+    this.cueEl = $('techcue');
+    this.cueKey = this.cueEl.querySelector('.k');
+    this.cueTxt = this.cueEl.querySelector('.t');
+    this.cueBar = this.cueEl.querySelector('.bar i');
+    this.comboEl = $('combo');
+    this.comboT = 0;
+    this.touch = false;
     this.lines = [];
     this.cache = {};
     this.resizeFx();
@@ -69,7 +76,8 @@ export class HUD {
     const W = this.mm.width, pad = 26;
     const b = track.bounds;
     const sc = (W - pad * 2) / Math.max(b.maxX - b.minX, b.maxZ - b.minZ);
-    this.mmT = (x, z) => [W / 2 + (x - b.cx) * sc, W / 2 - (z - b.cz) * sc];
+    // 俯视时世界 +x 在车手左侧（右手系），所以屏幕 x 取 -x，小地图才不会左右镜像
+    this.mmT = (x, z) => [W / 2 - (x - b.cx) * sc, W / 2 - (z - b.cz) * sc];
     const off = document.createElement('canvas');
     off.width = off.height = W;
     const g = off.getContext('2d');
@@ -109,7 +117,7 @@ export class HUD {
     const [sx, sy] = this.mmT(s.x, s.z);
     g.save();
     g.translate(sx, sy);
-    g.rotate(s.hd - Math.PI / 2);
+    g.rotate(Math.PI / 2 - s.hd);
     g.fillStyle = '#111';
     g.fillRect(-3, -12, 6, 24);
     g.fillStyle = '#fff';
@@ -136,7 +144,7 @@ export class HUD {
     const [x, y] = this.mmT(player.x, player.z);
     g.save();
     g.translate(x, y);
-    g.rotate(player.h + Math.PI);
+    g.rotate(Math.PI - player.h);
     g.fillStyle = '#ffd23a';
     g.strokeStyle = '#000';
     g.lineWidth = 3;
@@ -214,6 +222,49 @@ export class HUD {
     this.vig.classList.toggle('small', !st.nitroOn && st.smallOn);
   }
 
+  // 技巧窗口提示：蓝=可小喷，金=可双喷，紫=可接氮气（颜色与车尾火花一致）
+  cue(tech, k = 0, perfect = false) {
+    const show = tech === 'blue' || tech === 'gold' || tech === 'purple';
+    const key = show ? tech + (tech === 'blue' && perfect ? '*' : '') : '';
+    if (this.cache.cue !== key) {
+      this.cache.cue = key;
+      this.cueEl.className = show ? tech : 'hidden';
+      if (show) {
+        const tapKey = this.touch ? '👆小喷' : '↑';
+        const [k1, label] = {
+          blue: [tapKey, perfect ? '完美小喷' : '小喷'],
+          gold: [tapKey, '双喷'],
+          purple: [this.touch ? '👆氮气' : 'Ctrl', '接氮气'],
+        }[tech];
+        this.cueKey.textContent = k1;
+        this.cueTxt.textContent = label;
+      }
+    }
+    if (show) this.cueBar.style.width = Math.round(k * 100) + '%';
+  }
+
+  // 技巧链：漂移 › 完美小喷 › 双喷 › 接氮气（错过的窗口划掉显示）
+  combo(label, cls, fresh = false) {
+    const now = performance.now();
+    if (fresh || now - this.comboT > 2600) this.comboEl.innerHTML = '';
+    this.comboT = now;
+    if (this.comboEl.children.length) this.comboEl.insertAdjacentHTML('beforeend', '<i>›</i>');
+    const b = document.createElement('b');
+    b.className = cls;
+    b.textContent = label;
+    this.comboEl.appendChild(b);
+    while (this.comboEl.children.length > 11) this.comboEl.firstChild.remove();
+    this.comboEl.classList.add('show');
+    clearTimeout(this.comboTimer);
+    this.comboTimer = setTimeout(() => this.comboEl.classList.remove('show'), 2600);
+  }
+
+  clearCombo() {
+    this.comboEl.innerHTML = '';
+    this.comboEl.classList.remove('show');
+    this.cue('');
+  }
+
   message(text, color = '#27c7ff', small = false) {
     const d = document.createElement('div');
     d.className = 'msg' + (small ? ' sm' : '');
@@ -235,11 +286,13 @@ export class HUD {
     if (text) this.warnEl.textContent = text;
   }
 
-  finalCount(text) {
-    if (this.cache.fc === text) return;
-    this.cache.fc = text;
+  // 冲线倒计时：text + 大号秒数
+  finalCount(text, n) {
+    const key = text + '|' + n;
+    if (this.cache.fc === key) return;
+    this.cache.fc = key;
     this.finalEl.classList.toggle('hidden', !text);
-    if (text) this.finalEl.textContent = text;
+    if (text) this.finalEl.innerHTML = `${text} <b>${n}</b> 秒后结束`;
   }
 
   flash() {

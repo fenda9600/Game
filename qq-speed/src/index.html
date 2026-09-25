@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
 <title>飞车 3D · QQ飞车同人还原</title>
-<meta name="description" content="浏览器里的 3D 竞速：还原 QQ飞车的 11城、情迷爱琴海、法老金字塔、雪地大冒险，支持漂移集气、小喷、双喷、氮气、道具赛。" />
+<meta name="description" content="浏览器里的 3D 竞速：还原 QQ飞车的 11城、情迷爱琴海、法老金字塔、雪地大冒险，新增落日高速漂移赛道；支持漂移集气、小喷、双喷、接氮气、道具赛，赢金币买车改装。" />
 <style>
 :root{
   --blue:#1d6ff2; --cyan:#27c7ff; --orange:#ff8a00; --yellow:#ffd23a; --pink:#ff5fa8;
@@ -73,10 +73,27 @@ canvas#gl{position:fixed;inset:0;width:100%;height:100%;display:block}
 @keyframes cd{0%{transform:scale(2.6);opacity:0}25%{transform:scale(1);opacity:1}80%{opacity:1}100%{transform:scale(.7);opacity:0}}
 #warn{position:absolute;left:50%;top:22%;transform:translateX(-50%);font-size:30px;font-weight:900;color:#ff4b4b;text-shadow:0 0 12px #f00;animation:blink .5s infinite alternate}
 @keyframes blink{to{opacity:.35}}
-#finalcount{position:absolute;left:50%;top:120px;transform:translateX(-50%);font-size:22px;font-weight:700;color:#ffd23a;text-shadow:0 2px 6px #000}
+#finalcount{position:absolute;left:50%;top:92px;transform:translateX(-50%);padding:6px 18px;border-radius:24px;background:rgba(10,20,48,.72);border:1px solid rgba(255,210,58,.6);font-size:20px;font-weight:700;color:#ffd23a;text-shadow:0 2px 6px #000;white-space:nowrap}
+#finalcount b{display:inline-block;min-width:34px;font-family:var(--num);font-style:italic;font-size:34px;color:#fff;text-align:center;vertical-align:middle;animation:pulse 1s infinite}
 #keys{position:absolute;left:16px;bottom:16px;padding:10px 12px;font-size:12px;line-height:1.75;color:#dfe9ff;max-width:300px}
 #keys b{display:inline-block;min-width:22px;padding:0 5px;margin-right:4px;border-radius:4px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.25);text-align:center;font-weight:700;color:#fff}
 #keys .close{color:var(--muted);font-size:11px}
+#techcue{position:absolute;left:50%;bottom:96px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:5px 16px 7px 6px;border-radius:22px;background:rgba(8,16,40,.78);
+  border:2px solid var(--tc);box-shadow:0 0 18px var(--tc),inset 0 0 12px var(--tc);font-weight:900;font-size:18px;color:#fff;min-width:150px;overflow:hidden;animation:cueIn .15s ease-out}
+#techcue.blue{--tc:#2f9dff}#techcue.gold{--tc:#ffc21a}#techcue.purple{--tc:#b04dff}
+#techcue .k{padding:2px 9px;border-radius:12px;background:var(--tc);color:#08122a;font-family:var(--num);font-size:15px}
+#techcue .bar{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(255,255,255,.12)}
+#techcue .bar i{display:block;height:100%;background:var(--tc)}
+@keyframes cueIn{from{transform:translateX(-50%) scale(1.25)}}
+#combo{position:absolute;left:50%;bottom:142px;transform:translateX(-50%);display:flex;gap:5px;align-items:center;opacity:0;transition:opacity .45s;white-space:nowrap;font-size:13px}
+#combo.show{opacity:1}
+#combo b{padding:3px 10px;border-radius:10px;background:rgba(8,16,40,.72);border:1px solid rgba(255,255,255,.35);color:#fff}
+#combo b.blue{border-color:#2f9dff;color:#9fd4ff;box-shadow:0 0 8px rgba(47,157,255,.6)}
+#combo b.gold{border-color:#ffc21a;color:#ffe08a;box-shadow:0 0 8px rgba(255,194,26,.6)}
+#combo b.purple{border-color:#b04dff;color:#dcb0ff;box-shadow:0 0 8px rgba(176,77,255,.6)}
+#combo b.miss{opacity:.55;text-decoration:line-through;color:#c8d2e6}
+#combo i{color:rgba(255,255,255,.65);font-style:normal;font-weight:900}
+.tc-b{color:#5fb4ff;font-weight:900}.tc-g{color:#ffc21a;font-weight:900}.tc-p{color:#c27aff;font-weight:900}
 #songtip{position:absolute;right:250px;bottom:30px;font-size:13px;color:#fff;padding:6px 12px;opacity:0;transition:opacity .4s}
 #songtip.show{opacity:1}
 
@@ -130,6 +147,9 @@ body.touch #clinks{top:16px;right:238px}
 .map[data-id=egypt]{background:linear-gradient(135deg,#5b3f9e,#d99b3f 55%,#f3d58f)}
 .map[data-id=snow]{background:linear-gradient(135deg,#3f86d6,#bfe1ff 55%,#ffffff);color:#0b2750}
 .map[data-id=snow] .nm{text-shadow:none}
+.map[data-id=highway]{grid-column:1/-1;background:linear-gradient(120deg,#2d2f7a,#b44a8a 40%,#ff7a3d 70%,#ffc27a)}
+.map .new{position:absolute;right:10px;top:10px;padding:2px 8px;border-radius:6px;background:#ff5fa8;font-size:11px;font-weight:900;letter-spacing:1px;box-shadow:0 0 10px rgba(255,95,168,.7)}
+.opt.lock{opacity:.35;pointer-events:none}
 .skins{display:flex;flex-wrap:wrap;gap:8px}
 .skin{cursor:pointer;width:44px;height:44px;border-radius:10px;border:2px solid rgba(255,255,255,.25);position:relative}
 .skin.sel{border-color:#ffd23a;box-shadow:0 0 12px rgba(255,210,58,.7);transform:scale(1.08)}
@@ -161,7 +181,68 @@ table.res td.pos{font-family:var(--num);font-style:italic;color:var(--yellow);fo
 .stats{display:flex;gap:10px;justify-content:center;margin-bottom:8px;flex-wrap:wrap}
 .stat{padding:6px 12px;border-radius:8px;background:rgba(255,255,255,.08);font-size:12px;color:var(--muted)}
 .stat b{display:block;font-size:18px;color:#fff;font-family:var(--num);font-style:italic}
+/* ---------- 金币 / 车库 ---------- */
+.coins{display:inline-block;margin-left:8px;padding:2px 12px;border-radius:14px;background:rgba(0,0,0,.35);border:1px solid rgba(255,210,58,.55);
+  font-family:var(--num);font-style:italic;font-size:15px;color:#ffd23a;letter-spacing:0;vertical-align:middle}
+.coins::before{content:"🪙 ";font-style:normal}
+.skin{display:flex;align-items:center;justify-content:center}
+.skin.lock{filter:grayscale(.55) brightness(.75)}
+.skin.lock b{font-size:16px;filter:none;text-shadow:0 1px 3px #000}
+.gbtn{pointer-events:auto;cursor:pointer;margin-top:10px;padding:8px 16px;border-radius:18px;border:1px solid rgba(255,210,58,.6);background:rgba(255,190,60,.14);
+  color:#ffe08a;font-family:var(--ui);font-size:14px;font-weight:800;letter-spacing:1px;transition:background .15s}
+.gbtn:hover{background:rgba(255,190,60,.3)}
+body.garage #clinks{display:none}
+#garage{z-index:6;align-items:flex-end;justify-content:flex-start;background:linear-gradient(90deg,rgba(8,20,55,0) 0%,rgba(8,20,55,.2) 40%,rgba(8,20,55,.8) 62%)}
+.gbox{width:min(620px,100%);padding:14px 18px}
+.ghead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.ghead h2{flex:1;font-size:26px;font-weight:900;letter-spacing:4px}
+.ghead .coins{font-size:20px;padding:4px 14px}
+.ghead .gbtn{margin-top:0}
+.glist{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.gcar{cursor:pointer;padding:8px 4px 6px;border-radius:10px;border:2px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;font-size:13px;transition:transform .12s}
+.gcar:hover{transform:translateY(-2px)}
+.gcar.sel{border-color:#ffd23a;box-shadow:0 0 12px rgba(255,210,58,.5);background:rgba(255,210,58,.1)}
+.gcar .sw{width:46px;height:28px;border-radius:7px;border:1px solid rgba(255,255,255,.3)}
+.gcar.lock .sw{filter:grayscale(.6) brightness(.7)}
+.gcar .nm{font-weight:800}
+.gcar .nm small{display:block;font-size:10px;font-weight:400;color:var(--muted)}
+.gcar em{font-style:normal;font-size:11px;color:#6dff9e}
+.gcar em.price{color:#ffd23a}.gcar em.poor{color:#ff8080}.gcar em.use{color:#27c7ff}
+.gdetail{margin-top:12px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)}
+.gname{font-size:22px;font-weight:900;letter-spacing:2px}
+.gdesc{font-size:13px;color:var(--muted);margin:2px 0 8px}
+.gs{display:flex;align-items:center;gap:10px;font-size:13px;margin:5px 0}
+.gs span{width:34px;color:#cfe0ff}
+.gs .bar{flex:1;height:10px;border-radius:5px;background:rgba(255,255,255,.1);position:relative;overflow:hidden}
+.gs .bar i,.glegend i{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:linear-gradient(90deg,#1d6ff2,#27c7ff)}
+.gs .bar i.up,.glegend i.up{background:linear-gradient(90deg,#ff8a00,#ffd23a)}
+.glegend{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:4px}
+.glegend i{position:static;display:inline-block;width:16px;height:8px;margin-left:6px}
+#gbuy{padding:10px 36px;font-size:18px;letter-spacing:3px;margin-top:10px}
+#gbuy:disabled{opacity:.45;cursor:default;transform:none}
+.gh3{margin:14px 0 4px;font-size:14px;color:var(--cyan);letter-spacing:2px}
+.gh3 small{color:var(--muted);font-weight:400;letter-spacing:0;margin-left:6px}
+.gup{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:10px;background:rgba(255,255,255,.06);margin-top:6px}
+.gup .ic{font-size:24px;width:30px;text-align:center}
+.gup .info{flex:1;display:flex;flex-direction:column;gap:2px;font-size:14px}
+.gup .info b small{color:#ffd23a;font-family:var(--num);font-style:italic;margin-left:4px}
+.gup .info>small{color:var(--muted);font-size:11px}
+.gup .pips i{display:inline-block;width:20px;height:6px;border-radius:3px;background:rgba(255,255,255,.15);margin-right:3px}
+.gup .pips i.on{background:linear-gradient(90deg,#ff8a00,#ffd23a);box-shadow:0 0 6px rgba(255,170,40,.6)}
+.gup button{pointer-events:auto;cursor:pointer;border:none;border-radius:16px;padding:8px 14px;font-family:var(--ui);font-weight:800;font-size:13px;color:#fff;background:linear-gradient(180deg,#ffb13b,#ff7a00);white-space:nowrap}
+.gup button:disabled{background:rgba(255,255,255,.12);color:rgba(255,255,255,.45);cursor:default}
+#gflash{position:fixed;left:50%;top:18%;transform:translateX(-50%);font-size:30px;font-weight:900;color:#fff;text-shadow:0 0 14px #ff8a00,0 3px 0 rgba(0,0,0,.4);opacity:0;pointer-events:none;white-space:nowrap}
+#gflash.show{animation:msgIn 1.4s ease-out forwards}
+.reward{margin:0 auto 12px;max-width:420px;padding:10px 16px;border-radius:12px;background:rgba(255,190,60,.1);border:1px solid rgba(255,210,58,.45);text-align:left}
+.reward .rl{display:flex;justify-content:space-between;font-size:13px;color:#dce8ff;padding:2px 0}
+.reward .rl b{color:#ffd23a;font-family:var(--num);font-style:italic}
+.reward .rt{display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.15);font-weight:800}
+.reward .rt b{font-family:var(--num);font-style:italic;font-size:30px;color:#ffd23a;text-shadow:0 0 12px rgba(255,170,40,.6)}
+.reward .rb{font-size:12px;color:var(--muted);text-align:right}
 @media (max-width:860px){
+  #garage{align-items:center;background:rgba(8,20,55,.82)}
+  .glist{grid-template-columns:repeat(4,1fr);gap:6px}
+  .gcar{font-size:11px}
   .menu-grid{grid-template-columns:1fr}
   .logo{font-size:52px}
   #rank{width:150px;font-size:12px}
@@ -169,6 +250,8 @@ table.res td.pos{font-family:var(--num);font-style:italic;color:var(--yellow);fo
   #gauge{width:200px}
   .msg{font-size:30px}
   #countdown{font-size:120px}
+  #finalcount{font-size:14px;top:84px}#finalcount b{font-size:24px}
+  #techcue{font-size:15px;bottom:88px}#combo{font-size:11px;bottom:128px}
 }
 </style>
 </head>
@@ -196,6 +279,8 @@ table.res td.pos{font-family:var(--num);font-style:italic;color:var(--yellow);fo
     <div id="gauge"><i id="gaugefill"></i></div>
     <div class="n2o" id="n2o0">N₂O</div><div class="n2o" id="n2o1">N₂O</div>
   </div>
+  <div id="combo"></div>
+  <div id="techcue" class="hidden"><span class="k"></span><span class="t"></span><span class="bar"><i></i></span></div>
   <div id="msgs"></div>
   <div id="countdown"></div>
   <div id="warn" class="hidden"></div>
@@ -206,7 +291,9 @@ table.res td.pos{font-family:var(--num);font-style:italic;color:var(--yellow);fo
     <div><b>Shift</b>+方向 漂移（按住越久角度越大）</div>
     <div>出弯车身回正瞬间点按 <b>↑</b> 或 <b>W</b> = 小喷</div>
     <div><b>Ctrl</b> 氮气 / 道具（<b>空格</b>同效）<b>Alt</b> 道具换位</div>
-    <div>小喷 + 氮气 = 双喷 · 落地瞬间点 <b>↑</b> = 落地喷</div>
+    <div>火焰将尽再点 <b>↑</b> = 双喷 · 喷射中 <b>Ctrl</b> = 接氮气</div>
+    <div>车尾火花：<span class="tc-b">蓝</span>=可小喷 <span class="tc-g">金</span>=可双喷 <span class="tc-p">紫</span>=可接氮气</div>
+    <div>跳台落地瞬间点 <b>↑</b> = 落地喷</div>
     <div><b>R</b>复位 <b>C</b>视角 <b>M</b>音乐 <b>PgUp/PgDn</b>切歌 <b>Esc</b>暂停</div>
     <div class="close"><b>H</b> 隐藏/显示此面板</div>
   </div>
@@ -230,11 +317,13 @@ table.res td.pos{font-family:var(--num);font-style:italic;color:var(--yellow);fo
       <div class="opts" id="modes"></div>
     </div>
     <div class="glass card">
-      <h3>选择赛车</h3>
+      <h3>选择赛车 <span class="coins" id="mcoins">0</span></h3>
       <div class="skins" id="skins"></div>
       <div id="skinname"></div>
+      <button class="gbtn" id="garageBtn">🔧 车库 · 买车 · 改装</button>
       <h3 style="margin-top:12px">圈数</h3>
       <div class="opts" id="laps"></div>
+      <div class="tip" id="lapnote"></div>
       <h3 style="margin-top:12px">对手水平</h3>
       <div class="opts" id="diff"></div>
       <h3 style="margin-top:12px">画质</h3>
@@ -246,7 +335,8 @@ table.res td.pos{font-family:var(--num);font-style:italic;color:var(--yellow);fo
         <b>↑</b>加速　<b>↓</b>刹车/倒车　<b>←</b><b>→</b>转向　<b>Shift</b>+方向 漂移　<b>Ctrl</b> 氮气/道具　<b>Alt</b> 道具换位　<b>W</b> 小喷　<b>R</b> 复位　<b>C</b> 切换视角　<b>M</b> 音乐　<b>PgUp/PgDn</b> 切歌　<b>Esc</b> 暂停
       </div>
       <div class="tip">技巧：漂移时集气条增长，集满获得 1 个氮气（最多 2 个）。松开 Shift 后车身回正的瞬间点一下 ↑ 触发小喷（越早越好，出现“完美”）；
-        小喷与氮气叠加即“双喷”。倒计时“GO”出现瞬间按 ↑ 可以起步加速；跳台落地瞬间点 ↑ 触发落地喷。蓝色箭头是加速带。</div>
+        小喷火焰将尽时再点一次 ↑ 是“双喷”；喷射火焰未尽时按 Ctrl 放氮气是“接氮气”（额外加时）。倒计时“GO”出现瞬间按 ↑ 可以起步加速；跳台落地瞬间点 ↑ 触发落地喷。</div>
+      <div class="tip">看车尾火花就知道该按什么：<span class="tc-b">蓝色</span>=现在点 ↑ 小喷，<span class="tc-g">金色</span>=现在点 ↑ 双喷，<span class="tc-p">紫色</span>=现在按 Ctrl 接氮气。对手车也一样，旁观也能看出谁打出了完整连招。</div>
     </div>
   </div>
   <button class="go" id="start">开始比赛</button>
@@ -267,13 +357,33 @@ table.res td.pos{font-family:var(--num);font-style:italic;color:var(--yellow);fo
   </div>
 </div>
 
+<div id="garage" class="screen hidden">
+  <div class="glass gbox">
+    <div class="ghead"><h2>车库</h2><span class="coins" id="gcoins">0</span><button class="gbtn" id="gback">返回大厅</button></div>
+    <div class="glist" id="glist"></div>
+    <div class="gdetail">
+      <div class="gname" id="gname"></div>
+      <div class="gdesc" id="gdesc"></div>
+      <div class="gstats" id="gstats"></div>
+      <div class="glegend"><i></i>基础 <i class="up"></i>改装加成</div>
+      <button class="go" id="gbuy">使用这辆</button>
+    </div>
+    <h3 class="gh3">装备改装 <small>全车通用 · 每项 5 级</small></h3>
+    <div id="gups"></div>
+    <div class="tip">比赛按名次、冠军、技巧（完美小喷 / 双喷 / 接氮气）发放金币；圈数越多、对手越强奖励越高。</div>
+  </div>
+  <div id="gflash"></div>
+</div>
+
 <div id="result" class="screen hidden">
   <div class="glass box">
     <h2 id="resTitle">比赛结束</h2>
+    <div class="reward" id="resCoins"></div>
     <div class="stats" id="resStats"></div>
     <table class="res"><thead><tr><th>名次</th><th>车手</th><th>总时间</th><th>最佳单圈</th></tr></thead><tbody id="resBody"></tbody></table>
     <div class="btns">
       <button class="go" id="again">再来一局</button>
+      <button class="go sec" id="resGarage">车库改装</button>
       <button class="go sec" id="back">返回大厅</button>
     </div>
   </div>

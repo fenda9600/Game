@@ -170,6 +170,35 @@ export function roadTexture(style) {
       g.fillStyle = '#39c5ff';
       g.fillRect(22, 0, 6, H);
       g.fillRect(W - 28, 0, 6, H);
+    } else if (style === 'highway') {
+      // 四车道高速：深色沥青 + 白色虚线车道线 + 黄/白实线路缘
+      noiseFill(g, W, H, '#3d4048', 0.14, rnd, 2);
+      for (let i = 0; i < 1400; i++) {
+        g.fillStyle = `rgba(255,255,255,${rnd() * 0.06})`;
+        g.fillRect(rnd() * W, rnd() * H, 1 + rnd() * 2, 1 + rnd() * 2);
+      }
+      // 车辙（每条车道两道暗带）
+      for (let lane = 0; lane < 4; lane++)
+        for (const o of [0.3, 0.7]) {
+          const x = W * (lane + o) / 4;
+          const grd = g.createLinearGradient(x - 14, 0, x + 14, 0);
+          grd.addColorStop(0, 'rgba(0,0,0,0)');
+          grd.addColorStop(0.5, 'rgba(0,0,0,0.13)');
+          grd.addColorStop(1, 'rgba(0,0,0,0)');
+          g.fillStyle = grd;
+          g.fillRect(x - 14, 0, 28, H);
+        }
+      g.fillStyle = '#ffc93a';
+      g.fillRect(16, 0, 7, H);
+      g.fillStyle = '#f2f2f2';
+      g.fillRect(W - 23, 0, 7, H);
+      g.fillStyle = 'rgba(255,255,255,0.88)';
+      for (const f of [0.25, 0.5, 0.75])
+        for (let y = 0; y < H; y += 256) g.fillRect(W * f - 3, y + 40, 6, 150);
+      // 路缘反光条
+      g.fillStyle = '#ff7a3d';
+      g.fillRect(0, 0, 6, H);
+      g.fillRect(W - 6, 0, 6, H);
     }
     const t = toTex(c);
     return t;
@@ -293,8 +322,89 @@ export function wallTexture(style) {
       }
       g.fillStyle = '#f5fbff';
       g.fillRect(0, 0, W, 14);
+    } else if (style === 'highway') {
+      // 混凝土防撞墙 + 橙白反光条 + 蓝色标识
+      const grd = g.createLinearGradient(0, 0, 0, H);
+      grd.addColorStop(0, '#d9d4cc');
+      grd.addColorStop(1, '#9d978f');
+      g.fillStyle = grd;
+      g.fillRect(0, 0, W, H);
+      for (let i = 0; i < 2500; i++) {
+        g.fillStyle = `rgba(90,80,70,${rnd() * 0.1})`;
+        g.fillRect(rnd() * W, rnd() * H, 3, 3);
+      }
+      for (let x = 0; x < W; x += 128) {
+        g.fillStyle = 'rgba(60,55,50,0.35)';
+        g.fillRect(x, 0, 3, H);
+      }
+      for (let x = 0; x < W; x += 64) {
+        g.fillStyle = (x / 64) % 2 ? '#ffffff' : '#ff7a3d';
+        g.fillRect(x, 22, 64, 20);
+      }
+      g.fillStyle = '#1e4fb0';
+      g.fillRect(0, 0, W, 10);
+      g.font = 'italic bold 40px Arial Black, Arial';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillStyle = 'rgba(40,60,110,0.75)';
+      g.fillText('SUNSET HWY', 256, 82);
+      g.fillText('SPEED', 768, 82);
+      g.fillStyle = 'rgba(0,0,0,0.3)';
+      g.fillRect(0, H - 12, W, 12);
     }
     return toTex(c);
+  });
+}
+
+// 高速公路绿色指示牌
+export function signTexture(title, sub, bg = '#0b6b3a') {
+  return cached(`sign${title}${sub}${bg}`, () => {
+    const [c, g] = mk(512, 192);
+    g.fillStyle = bg;
+    g.fillRect(0, 0, 512, 192);
+    g.strokeStyle = '#ffffff';
+    g.lineWidth = 8;
+    g.strokeRect(10, 10, 492, 172);
+    g.fillStyle = '#ffffff';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = 'bold 64px "PingFang SC","Microsoft YaHei",sans-serif';
+    g.fillText(title, 256, sub ? 76 : 96);
+    if (sub) {
+      g.font = 'bold 36px Arial, sans-serif';
+      g.fillText(sub, 256, 146);
+    }
+    return toTex(c, { repeat: false });
+  });
+}
+
+// 路面喷涂：漂移区箭头
+export function driftZoneTexture(color = '#ffb13b') {
+  return cached('driftzone' + color, () => {
+    const [c, g] = mk(256, 512);
+    g.clearRect(0, 0, 256, 512);
+    g.fillStyle = color;
+    g.globalAlpha = 0.85;
+    for (let i = 0; i < 3; i++) {
+      const y = 150 - i * 52;
+      g.beginPath();
+      g.moveTo(40, y + 40);
+      g.lineTo(128, y - 20);
+      g.lineTo(216, y + 40);
+      g.lineTo(216, y + 12);
+      g.lineTo(128, y - 48);
+      g.lineTo(40, y + 12);
+      g.closePath();
+      g.fill();
+    }
+    // 画布上方 = 行驶前方（v 向前），正着写即可被驶近的车手读到
+    g.font = 'italic 900 64px "Arial Black", Arial';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('DRIFT', 128, 300);
+    g.font = 'bold 46px "PingFang SC","Microsoft YaHei",sans-serif';
+    g.fillText('漂移区', 128, 380);
+    return toTex(c, { repeat: false });
   });
 }
 
@@ -335,6 +445,12 @@ export function groundTexture(type) {
         g.beginPath();
         g.arc(rnd() * S, rnd() * S, 2 + rnd() * 7, 0, Math.PI * 2);
         g.fill();
+      }
+    } else if (type === 'gravel') {
+      noiseFill(g, S, S, '#8c8680', 0.22, rnd, 3);
+      for (let i = 0; i < 3000; i++) {
+        g.fillStyle = `rgba(${rnd() > 0.5 ? '230,220,200' : '60,55,50'},${rnd() * 0.25})`;
+        g.fillRect(rnd() * S, rnd() * S, 2, 2);
       }
     } else if (type === 'plaza') {
       g.fillStyle = '#c9c4ba';

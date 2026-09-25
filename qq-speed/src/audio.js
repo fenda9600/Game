@@ -6,6 +6,7 @@ const SONGS = [
   { name: '爱琴海之风', bpm: 118, root: 62, prog: [[0, 4, 7], [-3, 0, 4], [5, 9, 12], [7, 11, 14]], lead: [12, 11, 7, 4, 7, 11, 12, 14], bassPat: [1, 0, 0, 1, 1, 0, 1, 0], style: 1 },
   { name: '法老的试炼', bpm: 132, root: 55, prog: [[0, 3, 7], [1, 5, 8], [0, 3, 7], [-2, 1, 5]], lead: [0, 1, 4, 5, 7, 8, 7, 4], bassPat: [1, 1, 0, 1, 1, 0, 1, 1], style: 2 },
   { name: '冰雪狂飙', bpm: 140, root: 60, prog: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]], lead: [7, 12, 16, 12, 14, 12, 11, 7], bassPat: [1, 0, 1, 0, 1, 1, 1, 0], style: 3 },
+  { name: '落日高速', bpm: 124, root: 57, prog: [[0, 3, 7], [-4, 0, 3], [-9, -5, -2], [-2, 2, 5]], lead: [12, 10, 7, 3, 7, 10, 12, 15], bassPat: [1, 1, 1, 1, 1, 1, 1, 1], style: 4 },
 ];
 
 export class GameAudio {
@@ -166,6 +167,11 @@ export class GameAudio {
         this.tone(880, 0.12, 'square', 0.12);
         this.tone(1320, 0.2, 'square', 0.12, 1, 0.08);
         break;
+      case 'chain':
+        [988, 1319, 1760].forEach((f, i) => this.tone(f, 0.16, 'sawtooth', 0.09, 1, i * 0.05));
+        this.noiseBurst(0.5, 600, 0.8, 0.5, 'lowpass', 6);
+        break;
+      case 'cue': this.tone(arg === 'gold' ? 1568 : 1175, 0.07, 'sine', 0.08); break;
       case 'gauge':
         [1047, 1319, 1568].forEach((f, i) => this.tone(f, 0.18, 'triangle', 0.2, 1, i * 0.06));
         break;
