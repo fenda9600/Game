@@ -5,7 +5,7 @@ import { distToPolyline } from './util.js';
 // 霓虹都市（塔桥、SPEED 飞艇、吉祥物气球、蓝色加速箭头）、爱琴海岸（白墙蓝顶、石板路、三角梅）、
 // 沙海神殿（紫白格起点、有翼狮身像、太阳圆盘门楼）、冰雪峡谷（雪松、奖杯、热气球、看台横幅）、
 // 落日高速（黄昏滨海高速、龙门架指示牌、苜蓿叶立交、漂移区路面喷涂）、
-// 原始森林（异星天空下的巨木林：树洞隧道、溪谷木桥、瀑布潭、发光蘑菇）
+// 原始森林（晴空下的巨木林：树洞隧道、溪谷木桥、瀑布潭、发光蘑菇）
 export const MAPS = [
   {
     id: 'city',
@@ -106,7 +106,7 @@ export const MAPS = [
     desc: '黄昏的滨海高速：30 米宽四车道、大半径高速弯与 270° 苜蓿叶匝道，一口气漂到底。',
     layout: 'highway',
     laps: 5, // 本图固定 5 圈
-    sky: { top: '#3a3f8f', horizon: '#ffb27a', bottom: '#8a5a78', sun: [0.32, 0.2, -0.92], sunColor: '#ffc27a', sunI: 2.3, stars: 0.45 },
+    sky: { top: '#3a3f8f', horizon: '#ffb27a', bottom: '#8a5a78', sun: [0.32, 0.2, -0.92], sunColor: '#ffc27a', sunI: 2.3 },
     hemi: ['#ffd6b8', '#5d4f7a', 1.05],
     fog: ['#f0a88a', 420, 2500],
     ground: 'grass',
@@ -128,12 +128,12 @@ export const MAPS = [
     name: '原始森林',
     en: 'PRIMEVAL FOREST',
     tag: '巨木林道 · 树洞隧道 · 溪谷木桥',
-    desc: '异星天空下的原始森林：巨木参天、发光蘑菇照亮林道，钻过树洞隧道，飞越溪谷木桥。',
+    desc: '阳光穿过参天巨木洒在林道上，发光蘑菇点缀路边，钻过树洞隧道，飞越溪谷木桥。',
     layout: 'forest',
     isNew: true,
-    sky: { top: '#161447', horizon: '#48b8a4', bottom: '#12302c', sun: [-0.45, 0.32, 0.83], sunColor: '#d2fff2', sunI: 2.2, stars: 1 },
-    hemi: ['#c4fff0', '#23382a', 1.2],
-    fog: ['#2d5e57', 240, 1600],
+    sky: { top: '#3f86d8', horizon: '#d6ecd8', bottom: '#3a5a36', sun: [-0.45, 0.62, 0.64], sunColor: '#fff2cc', sunI: 2.6 },
+    hemi: ['#e4f4ff', '#3d5a30', 1.15],
+    fog: ['#b4d2b8', 320, 1900],
     ground: 'forest',
     groundTint: '#ffffff',
     water: { color: '#22b3a2', deep: '#0b3b3f', y: -1.5 },

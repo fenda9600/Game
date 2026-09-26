@@ -285,7 +285,7 @@ export function wallTexture(style) {
       g.font = 'bold 64px Arial Black, Arial';
       g.textAlign = 'center';
       g.textBaseline = 'middle';
-      const txt = ['SPEED', 'CYBER DRIFT', 'NITRO', 'CYBER DRIFT'];
+      const txt = ['SPEED', 'SPEED DRIFT', 'NITRO', 'SPEED DRIFT'];
       const tc = ['#ffffff', '#1565c0', '#ffffff', '#e53935'];
       for (let i = 0; i < 4; i++) {
         g.fillStyle = tc[i];
@@ -458,40 +458,6 @@ export function waterfallTexture() {
       g.fillRect(rnd() * 128, rnd() * 512, 1 + rnd() * 3, 20 + rnd() * 80);
     }
     return toTex(c, { srgb: true });
-  });
-}
-
-// 异星行星：条带云层 + 行星环
-// 行星贴图：条带气态巨行星。pal = [r, g, b] 基色，band = 条带起伏幅度
-export function planetTexture(pal = [120, 90, 190], seed = 31) {
-  return cached(`planet${pal}${seed}`, () => {
-    const [c, g] = mk(512, 256);
-    const rnd = mulberry32(seed);
-    const f1 = 0.06 + rnd() * 0.06, f2 = 0.18 + rnd() * 0.1;
-    for (let y = 0; y < 256; y += 2) {
-      const k = Math.sin(y * f1) * 0.5 + Math.sin(y * f2 + 1) * 0.3 + (rnd() - 0.5) * 0.2;
-      g.fillStyle = `rgb(${pal[0] + k * 60},${pal[1] + k * 50},${pal[2] + k * 40})`;
-      g.fillRect(0, y, 512, 2);
-    }
-    for (let i = 0; i < 40; i++) {
-      g.fillStyle = `rgba(255,235,250,${rnd() * 0.15})`;
-      g.beginPath();
-      g.ellipse(rnd() * 512, rnd() * 256, 20 + rnd() * 60, 3 + rnd() * 6, 0, 0, Math.PI * 2);
-      g.fill();
-    }
-    return toTex(c, { repeat: false });
-  });
-}
-
-export function ringTexture(rgb = '210,200,255') {
-  return cached(`ring${rgb}`, () => {
-    const [c, g] = mk(512, 8);
-    for (let x = 0; x < 512; x++) {
-      const a = Math.max(0, Math.sin(x * 0.05) * 0.35 + Math.sin(x * 0.19) * 0.25 + 0.35) * Math.min(1, x / 40, (512 - x) / 40);
-      g.fillStyle = `rgba(${rgb},${a})`;
-      g.fillRect(x, 0, 1, 8);
-    }
-    return toTex(c, { repeat: false });
   });
 }
 

@@ -485,71 +485,7 @@ function addBuilding(b, x, y, z, w, h, d, rot, kind, roofColor = 0x8f96a3) {
 // ---------- 各地图 ----------
 export function buildProps(mapId, ctx) {
   const fn = { city: cityProps, aegean: aegeanProps, egypt: egyptProps, snow: snowProps, highway: highwayProps, forest: forestProps }[mapId];
-  const gate = fn(ctx);
-  if (SPACE_SKY[mapId]) addSpaceSky(ctx, SPACE_SKY[mapId]);
-  return gate;
-}
-
-// ---------- 赛博太空天空：每张图都挂一颗带环行星 + 卫星 ----------
-// yaw：相对起跑方向的偏角（弧度，正 = 偏左），发车时就能在前上方看到；day = 白天半透明（暗面带自发光，不会是一块黑）
-const SPACE_SKY = {
-  city: { yaw: -0.3, up: 0.19, r: 440, pal: [190, 105, 215], ring: '170,240,255', tilt: 0.5, day: true, moons: [[-700, 140, 40, 0xd8f4ff]] },
-  aegean: { yaw: 0.32, up: 0.18, r: 400, pal: [235, 140, 165], ring: '255,230,200', tilt: -0.35, day: true, moons: [[680, 120, 34, 0xfff0f8]] },
-  egypt: { yaw: -0.28, up: 0.16, r: 520, pal: [220, 130, 80], ring: '255,210,160', tilt: 0.25, day: true, moons: [[-820, 220, 50, 0xffe2c4], [-1120, 40, 28, 0xffffff]] },
-  snow: { yaw: 0.3, up: 0.18, r: 440, pal: [130, 105, 225], ring: '200,250,255', tilt: -0.55, day: true, moons: [[700, 220, 44, 0xeef8ff]] },
-  highway: { yaw: 0.3, up: 0.16, r: 540, pal: [210, 80, 170], ring: '255,190,240', tilt: 0.3, day: false, moons: [[-860, 280, 48, 0xffd6f0], [-1200, 60, 26, 0xc8d0ff]] },
-  forest: { dir: [0.55, 0.19, -0.8], r: 360, pal: [120, 90, 190], ring: '210,200,255', tilt: 0.35, day: false, moons: [[-900, 260, 55, 0xcfd6ff], [-1350, -80, 32, 0xffc8e8]] },
-};
-
-function addSpaceSky(ctx, o) {
-  const { track, parent, updaters } = ctx;
-  let dir;
-  if (o.dir) dir = new THREE.Vector3(...o.dir).normalize();
-  else {
-    const s = track.sample(0, {});
-    const c = Math.cos(o.yaw), sn = Math.sin(o.yaw);
-    // 前向 (tx, tz)，左侧 = -右向
-    dir = new THREE.Vector3(s.tx * c - s.rx * sn, o.up, s.tz * c - s.rz * sn).normalize();
-  }
-  const blend = o.day ? { transparent: true, opacity: 0.94, depthWrite: false } : {};
-  const sky = new THREE.Group();
-  const R = o.r;
-  const tint = new THREE.Color(o.pal[0] / 255, o.pal[1] / 255, o.pal[2] / 255);
-  const planet = new THREE.Mesh(
-    new THREE.SphereGeometry(R, 48, 32),
-    new THREE.MeshStandardMaterial({ map: TX.planetTexture(o.pal, Math.round(R)), emissive: o.day ? tint : 0x2a1f55, emissiveIntensity: o.day ? 0.45 : 0.6, roughness: 1, fog: false, ...blend }),
-  );
-  planet.rotation.z = o.tilt;
-  sky.add(planet);
-  const r0 = R * 1.3, r1 = R * 2.2;
-  const ringGeo = new THREE.RingGeometry(r0, r1, 128, 1);
-  const rp = ringGeo.attributes.position, ruv = ringGeo.attributes.uv;
-  for (let i = 0; i < rp.count; i++) ruv.setXY(i, (Math.hypot(rp.getX(i), rp.getY(i)) - r0) / (r1 - r0), 0.5);
-  const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ map: TX.ringTexture(o.ring), transparent: true, opacity: o.day ? 0.85 : 1, side: THREE.DoubleSide, fog: false, depthWrite: false, toneMapped: false }));
-  ring.rotation.set(-1.25, 0.2, o.tilt);
-  sky.add(ring);
-  for (const [ox, oy, r, c] of o.moons) {
-    const moon = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: o.day ? 0.45 : 0.25, roughness: 1, fog: false, ...blend }));
-    moon.position.set(ox, oy, 0);
-    sky.add(moon);
-  }
-  sky.traverse((m) => { m.renderOrder = -9; });
-  sky.userData.spaceDir = dir;
-  // 行星方向上的云挪开，别把行星挡住
-  const clouds = parent.getObjectByName('clouds');
-  if (clouds) {
-    const B = track.bounds;
-    for (const c of clouds.children) {
-      const dx = c.position.x - B.cx, dz = c.position.z - B.cz, L = Math.hypot(dx, dz);
-      if ((dx * dir.x + dz * dir.z) / (L * Math.hypot(dir.x, dir.z)) > 0.78) c.visible = false;
-    }
-  }
-  parent.add(sky);
-  updaters.push((dt, t, cam) => {
-    sky.position.set(cam.x + dir.x * 2600, cam.y + dir.y * 2600, cam.z + dir.z * 2600);
-    sky.lookAt(cam.x, cam.y, cam.z);
-    planet.rotation.y = t * 0.01;
-  });
+  return fn(ctx);
 }
 
 function alongTrack(track, step, fn, offset = 0) {
@@ -785,7 +721,7 @@ function buildTowerBridge(ctx, d) {
     arch.position.set(0, 11, 0);
     arch.scale.set(1, 0.5, 1);
     tw.add(arch);
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(12, 2.4), new THREE.MeshStandardMaterial({ map: TX.textTexture('CYBER DRIFT', { w: 512, h: 96, bg: '#ff6a00', fg: '#fff', font: 'bold 60px Arial' }), emissive: 0x552200 }));
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(12, 2.4), new THREE.MeshStandardMaterial({ map: TX.textTexture('SPEED DRIFT', { w: 512, h: 96, bg: '#ff6a00', fg: '#fff', font: 'bold 60px Arial' }), emissive: 0x552200 }));
     sign.position.set(0, 17.5, -3.6);
     sign.rotation.y = Math.PI;
     tw.add(sign);
@@ -1634,7 +1570,7 @@ function forestProps(ctx) {
     batch.add(g.log, bark, M(x, groundAt(x, z) + r * 0.7, z, rnd() * 6, len, r, r));
     n++;
   }
-  // 古老符文石柱：石面嵌着霓虹纹路（原始森林里的赛博遗迹）
+  // 古老符文石柱：石面嵌着霓虹纹路（林中古迹）
   const stoneM = flat(0x55605a);
   const runeM = glow(0x27f0c8, 2.6);
   alongTrack(track, 110, (s) => {
@@ -1707,7 +1643,7 @@ function forestProps(ctx) {
     chevrons: true, chevronBg: '#0f2f2b', chevronFg: '#27f0c8',
     billboards: [
       TX.billboardTexture('PRIMEVAL', '原始森林', '#0f3b36', '#27f0c8'),
-      TX.billboardTexture('NEON WILD', '发光森林', '#3a0f5f', '#ff2bd6'),
+      TX.billboardTexture('WILD TRAIL', '林间飞驰', '#3b5a1f', '#a8d64a'),
     ],
     bbStep: 230,
   });

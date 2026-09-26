@@ -48,8 +48,13 @@ export const CAR_SKINS = [
   { id: 'spike_red', name: '尖峰·赤焰', body: 0xd81f3c, accent: 0x1c1c24, glow: 0xff3a5c, rim: 0x2b2b30, bodyType: 'spike' },
   { id: 'spike_neon', name: '尖峰·极光', body: 0x12151f, accent: 0x19f0ff, glow: 0xff2bd6, rim: 0x19f0ff, bodyType: 'spike' },
   { id: 'spike_void', name: '尖峰·暗物质', body: 0x2a1255, accent: 0xb46bff, glow: 0x7a5cff, rim: 0xd8c8ff, bodyType: 'spike' },
+  // 概念车：隼影（操控特化）/ 裂空（极速特化）/ 雷脉（加速特化）；wheels 覆盖默认轮距与轮胎宽度
+  { id: 'apex', name: '隼影', body: 0xf2f4f7, accent: 0x2b2f38, glow: 0x2fd8ff, rim: 0x2b2f38, rimRing: 0x2fd8ff, bodyType: 'apex', wheels: { x: 1.0, zf: 1.22, zr: -1.22, w: 0.52 } },
+  { id: 'velocity', name: '裂空', body: 0xd21f2a, accent: 0x1c1d22, glow: 0xffae1a, rim: 0x25262b, hub: 0xffae1a, bodyType: 'velocity', wheels: { x: 0.9, zf: 1.58, zr: -1.45, w: 0.42 } },
+  { id: 'pulse', name: '雷脉', body: 0x7433e6, accent: 0x2a2c33, glow: 0xb6ff2a, rim: 0x2a2c33, rimRing: 0xb6ff2a, bodyType: 'pulse', wheels: { x: 1.0, zf: 1.42, zr: -1.4, w: 0.52 } },
 ];
 export const isKart = (skin) => skin.bodyType === 'spike' || skin.bodyType === 'marshmallow';
+const isConcept = (skin) => skin.bodyType === 'apex' || skin.bodyType === 'velocity' || skin.bodyType === 'pulse';
 
 function profileShape(pts) {
   const s = new THREE.Shape();
@@ -240,6 +245,127 @@ function buildKartBody(root, skin, M) {
   return exhausts;
 }
 
+// ---------- 概念车 ----------
+// 侧面轮廓：沿车身纵向走底边（遇到车轮挖出轮拱），再按 top 点列从车头绕回车尾
+function archedProfile(z0, z1, arches, top, y0 = 0.3, r = 0.56) {
+  const s = new THREE.Shape();
+  s.moveTo(z0, y0);
+  for (const zc of arches) {
+    s.lineTo(zc - r, y0);
+    s.absarc(zc, y0, r, Math.PI, 0, true);
+  }
+  s.lineTo(z1, y0);
+  for (const [z, y] of top) s.lineTo(z, y);
+  s.closePath();
+  return s;
+}
+
+function buildConceptBody(root, skin, M) {
+  const add = kartAdder(root);
+  const { paint, accent, dark, glass, headM, tailM } = M;
+  const W = skin.wheels;
+  // 概念车饰条亮度压低一些，泛光后仍保留青 / 琥珀 / 青柠的颜色；尾翼端板用同色烤漆
+  const neonM = new THREE.MeshStandardMaterial({ color: skin.glow, emissive: skin.glow, emissiveIntensity: 1.6 });
+  const plateM = new THREE.MeshPhysicalMaterial({ color: skin.glow, metalness: 0.3, roughness: 0.3, clearcoat: 1 });
+  const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+  const exhausts = [];
+  if (skin.bodyType === 'apex') {
+    // 隼影：短轴距、超宽轮距的赛道小钢炮，中央水滴座舱 + 四个独立轮拱
+    add(extrudeSide(archedProfile(-2.0, 2.05, [], [[2.12, 0.46], [1.3, 0.7], [0.45, 0.78], [-1.35, 0.84], [-1.98, 0.76]]), 1.3, 0.1), paint, 0, 0, 0);
+    const canopy = add(new THREE.SphereGeometry(1, 28, 18), glass, 0, 0.86, -0.15);
+    canopy.scale.set(0.56, 0.4, 1.35);
+    add(box(0.12, 0.02, 1.6), neonM, 0, 0.8, 1.2, 0.2); // 车头中线
+    for (const sx of [-1, 1]) {
+      for (const zc of [W.zf, W.zr]) {
+        const f = zc > 0;
+        add(extrudeSide(archedProfile(zc - 0.78, zc + 0.8, [zc], f
+          ? [[zc + 0.84, 0.56], [zc + 0.5, 0.98], [zc - 0.2, 1.04], [zc - 0.7, 0.86]]
+          : [[zc + 0.72, 0.82], [zc + 0.2, 1.06], [zc - 0.5, 1.02], [zc - 0.82, 0.6]], 0.3, 0.58), 0.58, 0.06), paint, sx * W.x, 0, 0);
+      }
+      add(box(0.34, 0.3, 1.0), paint, sx * 0.82, 0.48, 0); // 侧舱
+      add(box(0.05, 0.1, 0.9), dark, sx * 0.99, 0.5, 0.05); // 侧进气
+      add(box(0.03, 0.04, 1.0), neonM, sx * 1.0, 0.36, 0);
+      add(box(0.46, 0.035, 0.34), dark, sx * 0.55, 0.27, 2.1, 0, sx * 0.18, 0); // 分体前铲
+      add(box(0.34, 0.03, 0.2), accent, sx * 1.08, 0.46, 1.95, 0, 0, sx * 0.25); // 鸭翼
+      add(box(0.3, 0.03, 0.18), accent, sx * 1.1, 0.6, 1.9, 0, 0, sx * 0.25);
+      add(box(0.06, 0.34, 0.06), neonM, sx * 0.66, 0.66, -2.04); // U 形尾灯两竖
+      add(box(0.07, 0.62, 0.72), plateM, sx * 1.12, 1.26, -1.92); // 青色尾翼端板
+      add(box(0.07, 0.4, 0.16), dark, sx * 0.5, 1.02, -1.86); // 尾翼支柱
+    }
+    add(box(1.5, 0.07, 0.07), neonM, 0, 0.62, 2.06, -0.3); // 一字眉大灯
+    add(box(1.2, 0.05, 0.05), headM, 0, 0.56, 2.08);
+    add(box(2.2, 0.06, 0.52), accent, 0, 1.48, -1.96, -0.1); // 双层尾翼
+    add(box(2.1, 0.05, 0.34), accent, 0, 1.24, -2.0, -0.18);
+    add(box(1.36, 0.06, 0.06), neonM, 0, 0.5, -2.04);
+    add(box(0.9, 0.05, 0.05), tailM, 0, 0.78, -2.02);
+    add(box(1.6, 0.18, 0.3), dark, 0, 0.34, -1.95); // 扩散器
+    for (const sx of [-0.3, 0.3]) {
+      add(new THREE.CylinderGeometry(0.12, 0.13, 0.2, 16), dark, sx, 0.42, -2.0, Math.PI / 2);
+      add(new THREE.TorusGeometry(0.13, 0.025, 8, 20), neonM, sx, 0.42, -2.1);
+      exhausts.push(new THREE.Vector3(sx, 0.42, -2.14));
+    }
+  } else if (skin.bodyType === 'velocity') {
+    // 裂空：修长低矮的楔形超跑，箭头车鼻 + 长溜背 + 平贴尾翼
+    add(extrudeSide(archedProfile(-2.62, 2.78, [W.zr, W.zf], [[2.84, 0.4], [2.55, 0.54], [0.65, 0.8], [-0.4, 0.84], [-2.4, 0.76], [-2.64, 0.64]]), 1.84, 0.12), paint, 0, 0, 0);
+    add(extrudeSide(profileShape([[0.7, 0.78], [-0.05, 1.1], [-0.95, 1.1], [-2.2, 0.8], [-0.2, 0.8]]), 1.2, 0.1), glass, 0, 0, 0);
+    add(box(0.62, 0.03, 2.1), accent, 0, 0.68, 1.62, 0.14); // 黑色中脊（引擎盖）
+    add(box(0.9, 0.04, 1.6), accent, 0, 0.84, -1.55, -0.02); // 尾部黑脊
+    add(box(1.86, 0.04, 0.34), accent, 0, 0.8, -2.45, -0.05); // 平贴尾翼
+    const nose = new THREE.ConeGeometry(0.4, 0.7, 4);
+    nose.rotateX(Math.PI / 2);
+    nose.scale(1.6, 0.35, 1);
+    add(nose, accent, 0, 0.38, 2.86); // 箭头车鼻
+    for (const sx of [-1, 1]) {
+      add(box(0.55, 0.05, 0.12), headM, sx * 0.55, 0.66, 2.42, 0.14, sx * 0.4, 0); // 细长大灯
+      add(box(0.6, 0.03, 0.06), neonM, sx * 0.56, 0.62, 2.46, 0.14, sx * 0.4, 0);
+      add(box(0.05, 0.3, 1.0), dark, sx * 0.93, 0.56, -0.35); // 侧进气
+      add(box(0.04, 0.04, 1.3), neonM, sx * 0.94, 0.38, 0.05);
+      add(extrudeSide(profileShape([[-1.1, 0.8], [-1.75, 0.78], [-1.7, 1.2]]), 0.05, 0.01), paint, sx * 0.62, 0, 0); // 尾鳍
+      add(box(0.44, 0.05, 0.3), accent, sx * 0.72, 0.26, 2.5, 0, sx * 0.3, 0); // 前铲
+    }
+    add(box(1.7, 0.07, 0.07), neonM, 0, 0.68, -2.77); // 琥珀色贯穿尾灯
+    add(box(1.2, 0.04, 0.05), tailM, 0, 0.6, -2.77);
+    add(box(1.5, 0.2, 0.3), dark, 0, 0.36, -2.52);
+    for (const sx of [-0.42, 0.42]) {
+      add(new THREE.CylinderGeometry(0.17, 0.18, 0.3, 20), dark, sx, 0.4, -2.68, Math.PI / 2);
+      add(new THREE.TorusGeometry(0.17, 0.03, 8, 24), neonM, sx, 0.4, -2.8);
+      exhausts.push(new THREE.Vector3(sx, 0.4, -2.86));
+    }
+  } else {
+    // 雷脉：方正厚重的 GT 肌肉跑车，阶梯宽轮拱 + 中高位单尾翼 + 叠放方形氮气口
+    add(extrudeSide(archedProfile(-2.34, 2.36, [W.zr, W.zf], [[2.4, 0.8], [0.95, 0.92], [-1.8, 0.96], [-2.34, 0.94]]), 2.0, 0.08), paint, 0, 0, 0);
+    add(extrudeSide(profileShape([[0.95, 0.9], [0.2, 1.34], [-1.0, 1.36], [-1.75, 0.94]]), 1.62, 0.08), glass, 0, 0, 0);
+    add(box(1.44, 0.06, 1.1), paint, 0, 1.44, -0.4); // 车顶
+    add(box(0.9, 0.08, 0.9), accent, 0, 0.95, 1.4); // 引擎盖进气
+    for (const sx of [-1, 1]) {
+      for (const zc of [W.zf, W.zr]) {
+        add(box(0.36, 0.16, 1.32), accent, sx * 1.02, 1.0, zc); // 阶梯宽轮拱
+        add(box(0.36, 0.3, 0.14), accent, sx * 1.02, 0.84, zc + (zc > 0 ? 0.68 : -0.68));
+      }
+      add(box(0.26, 0.03, 0.1), neonM, sx * 1.02, 1.09, W.zf + 0.28); // 翼子板青柠色块
+      add(box(0.26, 0.03, 0.1), neonM, sx * 1.02, 1.09, W.zf + 0.08);
+      add(box(0.1, 0.02, 0.5), neonM, sx * 0.3, 0.95, 1.95); // 引擎盖条纹
+      for (const dx of [0.52, 0.78]) add(box(0.2, 0.12, 0.05), headM, sx * dx, 0.66, 2.48); // 双方块大灯
+      add(box(0.04, 0.04, 1.4), neonM, sx * 1.01, 0.36, 0);
+      add(box(0.04, 0.3, 0.04), neonM, sx * 0.62, 0.42, 2.47, 0, 0, sx * 0.4); // 前唇青柠线
+      add(box(0.54, 0.18, 0.05), neonM, sx * 0.64, 0.78, -2.36); // 方形尾灯
+      add(box(0.36, 0.08, 0.06), dark, sx * 0.64, 0.78, -2.36);
+      add(box(0.07, 0.5, 0.62), plateM, sx * 1.03, 1.38, -2.06); // 尾翼端板
+      add(box(0.08, 0.34, 0.16), dark, sx * 0.55, 1.12, -2.0);
+    }
+    add(box(2.0, 0.07, 0.46), accent, 0, 1.3, -2.06, -0.1); // 单尾翼
+    add(box(1.8, 0.05, 0.36), dark, 0, 0.26, 2.44); // 前铲
+    add(box(1.2, 0.05, 0.05), tailM, 0, 0.64, -2.37);
+    add(box(1.7, 0.28, 0.3), dark, 0, 0.4, -2.28); // 方形扩散器
+    for (const y of [0.4, 0.58]) {
+      add(box(0.46, 0.14, 0.1), neonM, 0, y, -2.38);
+      add(box(0.38, 0.08, 0.12), dark, 0, y, -2.39);
+      exhausts.push(new THREE.Vector3(0, y, -2.46));
+    }
+  }
+  return exhausts;
+}
+
 export function buildCar(skin, { name = null, isPlayer = false } = {}) {
   const G = geos();
   const car = new THREE.Group();
@@ -261,6 +387,7 @@ export function buildCar(skin, { name = null, isPlayer = false } = {}) {
   const kart = isKart(skin);
   let exhausts;
   if (kart) exhausts = buildKartBody(root, skin, { paint, accent, dark, glass, headM, tailM, neonM, rimM });
+  else if (isConcept(skin)) exhausts = buildConceptBody(root, skin, { paint, accent, dark, glass, headM, tailM, neonM });
   else {
     const body = new THREE.Mesh(G.bodyGeo, paint);
     body.castShadow = true;
@@ -377,7 +504,11 @@ export function buildCar(skin, { name = null, isPlayer = false } = {}) {
 
   // 车轮
   const wheels = [];
-  const wheelPos = [[-0.93, 1.38], [0.93, 1.38], [-0.93, -1.38], [0.93, -1.38]];
+  const WH = skin.wheels;
+  const wheelPos = WH ? [[-WH.x, WH.zf], [WH.x, WH.zf], [-WH.x, WH.zr], [WH.x, WH.zr]] : [[-0.93, 1.38], [0.93, 1.38], [-0.93, -1.38], [0.93, -1.38]];
+  const tireScale = WH ? WH.w / 0.4 : 1;
+  const ringM = skin.rimRing ? new THREE.MeshStandardMaterial({ color: skin.rimRing, emissive: skin.rimRing, emissiveIntensity: 1.2 }) : null;
+  const hubM = skin.hub ? new THREE.MeshStandardMaterial({ color: skin.hub, emissive: skin.hub, emissiveIntensity: 1.5 }) : null;
   for (const [x, z] of wheelPos) {
     const steer = new THREE.Group();
     steer.position.set(x, 0.47, z);
@@ -385,13 +516,29 @@ export function buildCar(skin, { name = null, isPlayer = false } = {}) {
     steer.add(spin);
     const t = new THREE.Mesh(kart ? G.kartTire : G.tire, tireM);
     t.castShadow = true;
+    t.scale.x = tireScale;
     spin.add(t);
     const r = new THREE.Mesh(kart ? G.kartRim : G.rim, rimM);
+    r.scale.x = tireScale;
     spin.add(r);
+    // 概念车轮毂：外侧发光圈 / 发光中心
+    const out = Math.sign(x) * (0.21 * tireScale + 0.01);
+    if (ringM) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.022, 6, 28), ringM);
+      ring.rotation.y = Math.PI / 2;
+      ring.position.x = out;
+      spin.add(ring);
+    }
+    if (hubM) {
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.04, 12), hubM);
+      hub.rotation.z = Math.PI / 2;
+      hub.position.x = out;
+      spin.add(hub);
+    }
     for (let k = 0; k < 3; k++) {
       const sp = new THREE.Mesh(G.spoke, rimM);
       sp.rotation.x = (k * Math.PI) / 3;
-      sp.scale.set(1, kart ? 0.8 : 1, kart ? 0.62 : 1.1);
+      sp.scale.set(tireScale, kart ? 0.8 : 1, kart ? 0.62 : 1.1);
       spin.add(sp);
     }
     car.add(steer);

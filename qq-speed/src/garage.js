@@ -6,7 +6,7 @@ const KEY = 'feiche3d.profile.v1';
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => n.toLocaleString('en-US');
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
-export const BODY_NAMES = { sport: '跑车', gt: 'GT 宽体', hyper: '超跑', spike: '尖峰卡丁车', marshmallow: '棉花糖卡丁车' };
+export const BODY_NAMES = { sport: '跑车', gt: 'GT 宽体', hyper: '超跑', spike: '尖峰卡丁车', marshmallow: '棉花糖卡丁车', apex: '赛道跑车', velocity: '楔形超跑', pulse: 'GT 肌肉车' };
 
 // 各车基础属性（相对原版手感的倍率）；price 0 = 初始赠送
 export const CARS = {
@@ -22,7 +22,12 @@ export const CARS = {
   mallow_berry: { price: 800, vmax: 0.99, accel: 1.1, handling: 1.1, drift: 1.06, nitro: 1.04, desc: '软绵绵的草莓棉花糖：起步快、转向灵，最好上手。' },
   mallow_mint: { price: 1800, vmax: 1.0, accel: 1.08, handling: 1.08, drift: 1.08, nitro: 1.14, desc: '薄荷棉花糖：集气飞快，氮气一罐接一罐。' },
   spike_red: { price: 2800, vmax: 1.05, accel: 1.06, handling: 1.02, drift: 1.1, nitro: 1.06, desc: '尖峰系列入门款：刀锋车鼻，出弯爆发强。' },
-  spike_neon: { price: 4200, vmax: 1.045, accel: 1.08, handling: 1.08, drift: 1.16, nitro: 1.1, desc: '霓虹刀锋：漂移角度更深，赛博夜色里最亮的那一辆。' },
+  spike_neon: { price: 4200, vmax: 1.045, accel: 1.08, handling: 1.08, drift: 1.16, nitro: 1.1, desc: '霓虹刀锋：漂移角度更深，夜色里最亮的那一辆。' },
+  // 概念车：属性按车库属性条（0~100）标定，见 statBars 的区间
+  // 隼影 = 终极漂移车：加速 / 操控 / 漂移三项基础值即顶满属性条（1.45 / 1.3 / 1.3）
+  apex: { price: 12000, vmax: 1.122, accel: 1.45, handling: 1.3, drift: 1.3, nitro: 1.35, desc: '终极漂移赛车：加速、操控、漂移全部拉满，甩尾入弯、贴墙出弯随心所欲。' },
+  velocity: { price: 8800, vmax: 1.142, accel: 1.329, handling: 1.172, drift: 1.2, nitro: 1.34, desc: '极速特化：修长楔形车身，长直道上无人能及。' },
+  pulse: { price: 9600, vmax: 1.114, accel: 1.428, handling: 1.228, drift: 1.236, nitro: 1.35, desc: '加速特化：起步和出弯的爆发力一骑绝尘。' },
   spike_void: { price: 6800, vmax: 1.07, accel: 1.12, handling: 1.08, drift: 1.14, nitro: 1.14, desc: '尖峰旗舰：暗物质装甲 + 霓虹尾鳍，全能顶配。' },
 };
 
