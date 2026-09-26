@@ -28,7 +28,7 @@ export const TUNE = {
 };
 
 // 车辆性能修正（赛车基础属性 + 改装），默认值即原版手感
-export const BASE_PERF = { vmax: 1, accel: 1, turn: 1, grip: 1, drift: 1, gauge: 1, nitroTime: 0, nitroSpeed: 0, spray: 0 };
+export const BASE_PERF = { vmax: 1, accel: 1, turn: 1, grip: 1, drift: 1, gauge: 1, nitroTime: 0, nitroSpeed: 0, spray: 0, top: TUNE.vmax, topNitro: TUNE.vmaxNitro };
 
 export class PlayerCar {
   constructor(track, model, name, perf = BASE_PERF) {
@@ -143,13 +143,14 @@ export class PlayerCar {
     this.steer = damp(this.steer, steerT, 12, dt);
 
     // 各种加速状态
-    let vmax = T.vmax * P.vmax, acc = T.accel * P.accel;
-    if (this.nitroTime > 0) { vmax = T.vmaxNitro * P.vmax + P.nitroSpeed; acc = T.nitroAccel * P.accel; this.nitroTime -= dt; }
+    // 极速：常规 P.top，氮气 P.topNitro（米/秒，由车型极速属性 + 引擎改装换算）
+    let vmax = P.top, acc = T.accel * P.accel;
+    if (this.nitroTime > 0) { vmax = P.topNitro + P.nitroSpeed; acc = T.nitroAccel * P.accel; this.nitroTime -= dt; }
     if (this.smallBoost > 0) { vmax += this.smallBoostPower; acc += 14; this.smallBoost -= dt; }
     if (this.padTime > 0) { vmax += 12; acc += 20; this.padTime -= dt; }
     if (this.startBoost > 0) { vmax += 10; acc += 26; this.startBoost -= dt; }
     if (this.magnet > 0) { vmax += 10; acc += 12; this.magnet -= dt; }
-    vmax = Math.min(vmax, 86 * P.vmax);
+    vmax = Math.min(vmax, P.topNitro); // 各种加速叠加也不超过氮气极速
     if (this.slowTime > 0) { vmax *= 0.55; this.slowTime -= dt; }
     if (this.shield > 0) this.shield -= dt;
     this.vmaxNow = vmax;
@@ -206,6 +207,7 @@ export class PlayerCar {
       // 坡度影响
       this.s -= tr.slope[this.hint] * Math.cos(this.h - tr.hd[this.hint]) * 6 * dt;
     }
+    this.s = Math.min(this.s, P.topNitro); // 硬上限：下坡、飞跃也不超过氮气极速
 
     // 进入漂移：Shift + 方向
     if (!this.drifting && inp.shift && steerT !== 0 && this.s > T.driftMinSpeed && onGround && !spinning) {

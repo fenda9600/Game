@@ -643,7 +643,7 @@ class Game {
 
     // 声音
     if (P && st !== 'menu') {
-      this.audio.setEngine(Math.min(1.2, Math.abs(P.s) / TUNE.vmaxNitro), st === 'countdown' ? (this.input.has('ArrowUp') ? 1 : 0) : P.throttle, P.boosting, P.drifting && !P.airborne, true);
+      this.audio.setEngine(Math.min(1.2, Math.abs(P.s) / P.perf.topNitro), st === 'countdown' ? (this.input.has('ArrowUp') ? 1 : 0) : P.throttle, P.boosting, P.drifting && !P.airborne, true);
     } else this.audio.silence();
   }
 
@@ -1196,7 +1196,7 @@ class Game {
       cam.position.y += (Math.random() - 0.5) * 0.025;
     }
     cam.lookAt(this.camLook);
-    const fovT = 66 + Math.abs(P.s) * 0.12 + b * 6;
+    const fovT = Math.min(88, 66 + Math.abs(P.s) * 0.12) + b * 6;
     cam.fov = damp(cam.fov, fovT, 4, dt);
     cam.updateProjectionMatrix();
   }

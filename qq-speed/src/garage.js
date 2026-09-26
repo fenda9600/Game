@@ -89,14 +89,24 @@ export class Profile {
   }
 }
 
+// 极速区间（km/h）：极速属性最低的车（未改装）→ 下限，最高的车（引擎满级）→ 上限，中间线性
+export const TOP_KMH = [220, 367];
+export const NITRO_KMH = [285, 505];
+const V_LO = Math.min(...Object.values(CARS).map((c) => c.vmax));
+const V_HI = Math.max(...Object.values(CARS).map((c) => c.vmax)) * (1 + 0.003 * MAX_LV);
+const speedAt = ([lo, hi], v) => lo + (hi - lo) * Math.max(0, Math.min(1, (v - V_LO) / (V_HI - V_LO)));
+
 // 赛车 + 改装 → 物理修正
 export function perfFor(skinId, up) {
   const c = CARS[skinId] || CARS.red;
   const u = up || {};
   const e = u.engine | 0, t = u.turbo | 0, r = u.tires | 0, n = u.nitro | 0;
+  const vmax = c.vmax * (1 + 0.003 * e);
   return {
     ...BASE_PERF,
-    vmax: c.vmax * (1 + 0.003 * e),
+    vmax,
+    top: speedAt(TOP_KMH, vmax) / 3.6,
+    topNitro: speedAt(NITRO_KMH, vmax) / 3.6,
     accel: c.accel * (1 + 0.0125 * t),
     turn: c.handling * (1 + 0.008 * r),
     grip: c.handling * (1 + 0.008 * r),
@@ -223,7 +233,8 @@ export class GarageUI {
     const s = CAR_SKINS[this.view];
     const c = CARS[s.id];
     $('gname').textContent = s.name;
-    $('gdesc').textContent = `${BODY_NAMES[s.bodyType]} · ${c.desc}`;
+    const pf = perfFor(s.id, p.up);
+    $('gdesc').textContent = `${BODY_NAMES[s.bodyType]} · ${c.desc} 极速 ${Math.round(pf.top * 3.6)} km/h · 氮气 ${Math.round(pf.topNitro * 3.6)} km/h`;
     $('gstats').innerHTML = statBars(s.id, p.up).map(([n, b, f]) =>
       `<div class="gs"><span>${n}</span><div class="bar"><i class="up" style="width:${f}%"></i><i style="width:${b}%"></i></div></div>`).join('');
     const own = p.owns(s.id);

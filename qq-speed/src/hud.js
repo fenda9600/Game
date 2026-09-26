@@ -162,7 +162,7 @@ export class HUD {
   drawSpeedo(kmh, boost) {
     const g = this.spx, W = this.sp.width, c = W / 2, R = W * 0.4;
     g.clearRect(0, 0, W, W);
-    const a0 = Math.PI * 0.75, sweep = Math.PI * 1.5, maxK = 300;
+    const a0 = Math.PI * 0.75, sweep = Math.PI * 1.5, maxK = 550;
     g.lineCap = 'round';
     g.lineWidth = 26;
     g.strokeStyle = 'rgba(8,20,50,.7)';
@@ -194,7 +194,7 @@ export class HUD {
       g.moveTo(c + Math.cos(a) * r1, c + Math.sin(a) * r1);
       g.lineTo(c + Math.cos(a) * r2, c + Math.sin(a) * r2);
       g.stroke();
-      if (k % 2 === 0) g.fillText(String(k * 30), c + Math.cos(a) * (R - 62), c + Math.sin(a) * (R - 62));
+      if (k % 2 === 0) g.fillText(String(k * 55), c + Math.cos(a) * (R - 62), c + Math.sin(a) * (R - 62));
     }
   }
 
