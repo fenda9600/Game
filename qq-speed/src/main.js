@@ -494,6 +494,9 @@ class Game {
       this.scene.add(r.model);
       this.racers.push(r);
     }
+    // AI 速度跟随玩家本车的常规极速（原版 55 m/s ≈ 198 km/h 为 1 倍）
+    const speedK = this.player ? this.player.perf.top / TUNE.vmax : 1;
+    for (const r of this.racers) if (!r.isPlayer) r.speedK = speedK;
     for (const r of this.racers) this.updateProgress(r, true);
     this.standings = [...this.racers];
   }

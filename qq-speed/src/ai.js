@@ -58,12 +58,14 @@ export class AICar {
 
   update(dt, active, raceTime, rubber) {
     const tr = this.track;
-    let vmaxBase = TUNE.vmax * (0.8 + 0.2 * this.skill) * rubber;
-    if (this.nitroTime > 0) { vmaxBase += 17; this.nitroTime -= dt; }
-    if (this.magnet > 0) { vmaxBase += 10; this.magnet -= dt; }
+    // speedK：按玩家本车常规极速同步缩放（演示赛为 1）
+    const k = this.speedK ?? 1;
+    let vmaxBase = TUNE.vmax * k * (0.8 + 0.2 * this.skill) * rubber;
+    if (this.nitroTime > 0) { vmaxBase += 17 * k; this.nitroTime -= dt; }
+    if (this.magnet > 0) { vmaxBase += 10 * k; this.magnet -= dt; }
     if (this.slowTime > 0) { vmaxBase *= 0.55; this.slowTime -= dt; }
     if (this.shield > 0) this.shield -= dt;
-    if (this.smallBoost > 0) { vmaxBase += 4; this.smallBoost -= dt; }
+    if (this.smallBoost > 0) { vmaxBase += 4 * k; this.smallBoost -= dt; }
     const d = this.dist;
     const cNow = tr.curvAhead(d, 8);
     const look = 18 + this.s * 1.25;
@@ -75,7 +77,7 @@ export class AICar {
     let spinning = false;
     if (this.spin > 0) { this.spin -= dt; vt = 5; spinning = true; }
     if (!active || raceTime < this.startDelay) vt = 0;
-    if (this.s < vt) this.s += (this.nitroTime > 0 ? 34 : 20 + 4 * this.skill) * (1 - Math.pow(this.s / Math.max(vt, 1), 2) * 0.7) * dt;
+    if (this.s < vt) this.s += (this.nitroTime > 0 ? 34 : 20 + 4 * this.skill) * k * (1 - Math.pow(this.s / Math.max(vt, 1), 2) * 0.7) * dt;
     else this.s -= Math.min(this.s - vt, (spinning ? 50 : 30) * dt);
     this.s = Math.max(0, this.s);
 
